@@ -1,0 +1,19 @@
+{
+  "name": "قعدة لعّيبة",
+  "short_name": "لعّيبة",
+  "description": "12 لعبة صغيرة، كل واحد من موبايله. إعداد م. إياد حلوبي",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF4D6",
+  "theme_color": "#FF4B3E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

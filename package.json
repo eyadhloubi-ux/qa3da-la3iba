@@ -1,0 +1,16 @@
+{
+  "name": "qa3da-la3iba",
+  "version": "1.0.0",
+  "description": "قعدة لعّيبة — 12 لعبة صغيرة بتنلعب من الموبايلات، فردي أو فرق. إعداد م. إياد حلوبي",
+  "main": "server.js",
+  "private": true,
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.1"
+  },
+  "optionalDependencies": {
+    "pg": "^8.11.5"
+  }
+}
