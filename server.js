@@ -165,6 +165,7 @@ wss.on('connection', (ws) => {
       case 'ping': { send(ws, { t: 'pong', c: m.c, s: Date.now() }); return; }
       case 'create': {
         if (typeof m.pid !== 'string') return;
+        if (room && room.host === ws) { room.host = null; room.hostLeftAt = Date.now(); }
         const code = newCode(), key = newKey();
         const r = makeRoom(code, key, m.pid);
         ws.pid = m.pid; ws.code = code;

@@ -1,5 +1,5 @@
 /* قعدة لعّيبة — كاش بسيط: الشبكة أولاً وبعدين الكاش */
-const C = 'la3iba-v5';
+const C = 'la3iba-v6';
 const CORE = ['./', 'index.html', 'style.css', 'app.js', 'engine.js', 'games.js', 'story.js', 'art.js', 'qrcode.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(CORE)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))); self.clients.claim(); });

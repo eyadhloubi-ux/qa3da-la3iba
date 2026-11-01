@@ -272,6 +272,7 @@
 
   function banners() {
     var h = '';
+    if (S && S.phase === 'closed') return h;
     if (!demo && role !== 'host' && !V.connected) h += '<div class="banner">النت مقطوع، عم نرجع نوصل<span class="dots-anim"></span></div>';
     if (role !== 'host' && !demo && V.hostGone) h += '<div class="banner"><span>الريس طلع من القعدة 🚪</span><button class="btn sm ghost" data-a="claimHost">خليني أنا الريس 🎩</button></div>';
     else if (role !== 'host' && !demo && V.hostAway) h += '<div class="banner">الريس انقطع، رح نستناه شوي<span class="dots-anim"></span></div>';
@@ -325,6 +326,7 @@
       case 'revealChoice': return revealChoiceView();
       case 'reveal': return revealView();
       case 'final': return finalView();
+      case 'closed': return isHost() ? '<div class="card center"><h2 class="dots-anim">عم نفتح قعدة جديدة</h2></div>' : '<div class="card center"><div style="font-size:60px">🎡</div><h2>الريس فتح قعدة جديدة</h2><p class="muted" style="margin:0">هالقعدة خلصت. اطلب من الريس الكود الجديد أو امسح الـQR.</p><button class="btn red" data-a="home2">فوت بكود جديد 🎟️</button></div>';
     }
     return '';
   }
@@ -700,7 +702,8 @@
     h += storyCard();
     if (isHost()) h += hostFinalTools();
     h += installCard();
-    if (isHost()) h += '<button class="btn mint wide" data-a="rematch">🔁 قعدة جديدة بنفس الناس</button>';
+    if (isHost()) h += '<div class="card"><h2 class="h-sec">قعدة جديدة؟ 🎡</h2><div class="btn-row"><button class="btn mint" data-a="rematch">🔁 نفس الناس</button><button class="btn ghost" data-a="freshRoom">🆕 بناس جداد</button></div>' +
+      '<p class="muted" style="margin:0;font-size:14px">بنفس الناس: الكل بيضل جوّا، وبتقدر تغيّر الإعدادات والفرق. بناس جداد: بيطلعلك كود جديد والكل بيفوت من أول.</p></div>';
     return h;
   }
   function storyCard() {
@@ -904,7 +907,21 @@
       if (installEvt) { var ev = installEvt; installEvt = null; try { ev.prompt(); ev.userChoice.then(function (r) { if (r && r.outcome === 'accepted') toast('انزلت عالشاشة الرئيسية ✔'); render(); }); } catch (e) { installSheet(); } return; }
       installSheet();
     },
-    rematch: function () { confirmSheet('نبلّش قعدة جديدة بنفس الناس؟ النتيجة الحالية رح تنمسح.', 'يلا', function () { act({ a: 'rematch' }); }); }
+    rematch: function () { confirmSheet('نبلّش قعدة جديدة بنفس الناس؟ النتيجة الحالية رح تنمسح.', 'يلا', function () { act({ a: 'rematch' }); }); },
+    freshRoom: function () {
+      confirmSheet('نفتح قعدة جديدة بكود جديد؟ كل اللاعبين رح يطلعوا من هالقعدة ويفوتوا من أول.', 'افتح قعدة جديدة', function () {
+        act({ a: 'closeRoom' });
+        setTimeout(function () {
+          var prof = V.pendingProfile || LS.get('lb_prof', null) || { name: P(ME) ? P(ME).name : '', g: P(ME) ? P(ME).g : 'm' };
+          if (PH[ME]) prof.photo = PH[ME];
+          V.pendingProfile = prof;
+          LS.del('lb_room'); room = null; engine = null; role = 'none'; S = null; PH = {};
+          storyCache.key = null; V.tab = 'rank';
+          send({ t: 'create', pid: ME }); V.screen = 'room'; render();
+        }, 600);
+      });
+    },
+    home2: function () { LS.del('lb_room'); location.href = location.pathname; }
   };
 
   function copy(text) {

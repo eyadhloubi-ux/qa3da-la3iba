@@ -619,6 +619,11 @@
         this.emit(true);
         return;
       }
+      case 'closeRoom': {
+        s.phase = 'closed'; s.cur = null;
+        this.emit();
+        return;
+      }
       case 'rematch': {
         s.history = []; s.used = []; s.passed = []; s.roundNo = 0; s.cur = null; s.reveal = null;
         s.teams.forEach(function (t) { t.ptr = 0; });
