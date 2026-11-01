@@ -480,6 +480,7 @@
         this.fixCaptains();
         if (s.cur && s.cur.playersIn) {
           s.cur.playersIn = s.cur.playersIn.filter(function (id) { return id !== a.pid; });
+          if (s.phase === 'play' && !s.cur.startAt && s.cur.playersIn.length && this.checkReady()) { if (this.hooks.kick) this.hooks.kick(a.pid); return; }
           if (s.phase === 'play' && this.allIn()) { if (this.hooks.kick) this.hooks.kick(a.pid); this.finishPlay(); return; }
         }
         if (this.hooks.kick) this.hooks.kick(a.pid);

@@ -9,11 +9,13 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const STATS_KEY = process.env.STATS_KEY || 'la3iba';
+const ADMIN_KEY = process.env.ADMIN_KEY || STATS_KEY;
 const HOST_GRACE_MS = 45000;
 const ROOM_TTL_MS = 8 * 60 * 60 * 1000;
 
 const app = express();
 app.disable('x-powered-by');
+app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, p) {
     if (/\.(html|js|css|webmanifest)$/.test(p)) res.setHeader('Cache-Control', 'no-cache');
@@ -25,6 +27,14 @@ app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
 const STATS_FILE = path.join(__dirname, 'stats.json');
 let stats = { rooms: 0, sessions: 0, finished: 0, rounds: 0, players: 0, games: {}, passes: {}, modes: {}, days: {} };
 let pg = null;
+const CFG_FILE = path.join(__dirname, 'games-config.json');
+let gameCfg = { off: [] };
+async function saveCfg() {
+  try {
+    if (pg) await pg.query('INSERT INTO la3iba_stats (id, data) VALUES (2, $1) ON CONFLICT (id) DO UPDATE SET data = $1', [gameCfg]);
+    else fs.writeFileSync(CFG_FILE, JSON.stringify(gameCfg));
+  } catch (e) { console.error('cfg save', e.message); }
+}
 async function loadStats() {
   if (process.env.DATABASE_URL) {
     try {
@@ -33,11 +43,14 @@ async function loadStats() {
       await pg.query('CREATE TABLE IF NOT EXISTS la3iba_stats (id INT PRIMARY KEY, data JSONB NOT NULL)');
       const r = await pg.query('SELECT data FROM la3iba_stats WHERE id = 1');
       if (r.rows[0]) stats = Object.assign(stats, r.rows[0].data);
+      const c = await pg.query('SELECT data FROM la3iba_stats WHERE id = 2');
+      if (c.rows[0]) gameCfg = Object.assign(gameCfg, c.rows[0].data);
       console.log('stats: postgres');
       return;
     } catch (e) { console.error('pg failed, using file', e.message); pg = null; }
   }
   try { stats = Object.assign(stats, JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'))); } catch (e) { }
+  try { gameCfg = Object.assign(gameCfg, JSON.parse(fs.readFileSync(CFG_FILE, 'utf8'))); } catch (e) { }
 }
 let saveT = null;
 function saveStats() {
@@ -67,6 +80,40 @@ app.get('/stats', (req, res) => {
 <h2>طريقة اللعب</h2><table><tr><th>الطريقة</th><th>العدد</th></tr>${rows(stats.modes, { solo: 'فردي', teams: 'فرق' })}</table>
 <h2>القعدات حسب اليوم</h2><table><tr><th>اليوم</th><th>عدد القعدات</th></tr>${days || '<tr><td colspan="2">لا توجد بيانات بعد</td></tr>'}</table>
 </body></html>`);
+});
+
+/* ---------- إدارة الألعاب ---------- */
+app.get('/config', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ off: gameCfg.off }); });
+app.post('/admin/games', (req, res) => {
+  if (req.query.key !== ADMIN_KEY) return res.status(403).json({ ok: false });
+  const off = Array.isArray(req.body && req.body.off) ? req.body.off.filter(g => GAME_NAMES[g]) : [];
+  if (off.length >= Object.keys(GAME_NAMES).length) return res.status(400).json({ ok: false, msg: 'لازم تبقى لعبة وحدة مفعّلة على الأقل' });
+  gameCfg.off = off; saveCfg();
+  res.json({ ok: true, off });
+});
+app.get('/admin', (req, res) => {
+  if (req.query.key !== ADMIN_KEY) return res.status(403).send('مفتاح الإدارة غير صحيح. أضف ?key= إلى الرابط.');
+  const key = encodeURIComponent(req.query.key);
+  const rows = Object.entries(GAME_NAMES).map(([id, n]) => `<label class="r"><span>${n}<small>${(stats.games[id] || 0)} جولة</small></span><input type="checkbox" data-id="${id}" ${gameCfg.off.includes(id) ? '' : 'checked'}><i></i></label>`).join('');
+  res.send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>إدارة قعدة لعّيبة</title>
+<style>body{font-family:system-ui,sans-serif;background:#FFF4D6;color:#16211B;max-width:560px;margin:0 auto;padding:20px}h1{margin:0 0 4px}p{margin:0 0 16px;color:#5C6B60}
+.r{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:3px solid #16211B;border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:3px 3px 0 #16211B;cursor:pointer}
+.r span{font-weight:700;display:flex;flex-direction:column}.r small{font-weight:400;color:#5C6B60}
+.r input{display:none}.r i{width:52px;height:30px;border-radius:99px;background:#ddd;border:2px solid #16211B;position:relative;flex:none;transition:.2s}
+.r i::after{content:"";position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #16211B;transition:.2s}
+.r input:checked+i{background:#22C17A}.r input:checked+i::after{right:25px}
+#msg{min-height:24px;font-weight:700}a{color:#2F6BFF}</style></head><body>
+<h1>إدارة قعدة لعّيبة</h1><p>فعّل أو أوقف أي لعبة. الألعاب الموقوفة تظهر للناس مقفلة بعبارة «قريباً» ولا تدخل العجلة. يُحفظ التغيير فوراً.</p>
+${rows}<div id="msg"></div><p><a href="/stats?key=${key}">الإحصائيات ←</a></p>
+<script>
+const msg=document.getElementById('msg');
+document.querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{
+  const off=[...document.querySelectorAll('input')].filter(x=>!x.checked).map(x=>x.dataset.id);
+  fetch('/admin/games?key=${key}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({off})}).then(r=>r.json()).then(j=>{
+    if(j.ok){msg.textContent='تم الحفظ ✔';msg.style.color='#1E9C77'}else{msg.textContent=j.msg||'لم يتم الحفظ';msg.style.color='#E0336F';i.checked=!i.checked}
+  }).catch(()=>{msg.textContent='تعذّر الاتصال';i.checked=!i.checked});
+}));
+</script></body></html>`);
 });
 
 /* ---------- الغرف ---------- */

@@ -32,7 +32,11 @@
     hostAway: false, hostGone: false, kicked: false, confettiFor: null, setupErr: '', withdrawn: {}, ctrl: null
   };
   var installEvt = null;
+  var OFFG = [];
+  function liveGames() { return MiniGames.ids.filter(function (id) { return OFFG.indexOf(id) < 0; }); }
+  function fixGames() { if (!engine || !S || (S.phase !== 'setup' && S.phase !== 'lobby')) return; var g = S.cfg.games.filter(function (id) { return OFFG.indexOf(id) < 0; }); if (!g.length) g = liveGames(); if (g.length !== S.cfg.games.length) act({ a: 'cfg', cfg: { games: g } }); }
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; });
+  window.addEventListener('appinstalled', function () { installEvt = null; toast('انزلت عالشاشة الرئيسية ✔'); });
 
   /* ---------- الثيم ---------- */
   var theme = LS.get('lb_theme', null);
@@ -91,8 +95,7 @@
     return {
       state: function (s) {
         S = s;
-        if (!demo) { send({ t: 'state', s: s }); LS.set('lb_hs_' + s.code, s); }
-        else botsThink();
+        send({ t: 'state', s: s }); LS.set('lb_hs_' + s.code, s);
         render();
       },
       photos: function (p) { PH = p; if (!demo) send({ t: 'photos', p: p }); render(); },
@@ -176,55 +179,6 @@
     }
   }
 
-  /* ---------- وضع التجربة بلاعبين وهميين ---------- */
-  var BOTS = [['سامر', 'm'], ['لين', 'f'], ['أبو العبد', 'm'], ['ريما', 'f'], ['جود', 'f'], ['حمودة', 'm'], ['نور', 'f'], ['كرم', 'm'], ['تيم', 'm'], ['ماسة', 'f']];
-  var botDone = {};
-  function startDemo(profile) {
-    demo = true; role = 'host';
-    room = { code: 'DEMO1', key: null };
-    engine = new ENG({ code: 'DEMO1', hostId: ME, hooks: hooksFor(), games: GDUR, now: T });
-    engine.act(ME, { a: 'join', profile: profile });
-    V.screen = 'room';
-    render();
-  }
-  function addBot() {
-    var used = {}; engine.active().forEach(function (id) { used[engine.s.players[id].name] = 1; });
-    var b = BOTS.filter(function (x) { return !used[x[0]]; })[0];
-    if (!b) { toast('خلصوا اللاعبين الوهميين 😅'); return; }
-    engine.act('bot_' + b[0], { a: 'join', profile: { name: b[0], g: b[1], bot: true } });
-  }
-  function bots() { return engine ? engine.active().filter(function (id) { return engine.s.players[id].bot; }) : []; }
-  function later(key, ms, fn) { if (botDone[key]) return; botDone[key] = 1; setTimeout(fn, ms); }
-  function botsThink() {
-    if (!demo || !engine) return;
-    var s = engine.s;
-    if (s.phase === 'lobby' && s.cfg.mode === 'teams') {
-      bots().forEach(function (b) { if (!s.players[b].team) later('team' + b + s.seq, 400 + Math.random() * 900, function () { if (engine.s.players[b] && !engine.s.players[b].team) engine.act(b, { a: 'joinTeam', team: engine.smallestTeam() }); }); });
-    }
-    if (s.phase === 'intro' && s.cur) {
-      var n = s.cur.n + ':' + s.roundNo + ':' + s.cur.game;
-      bots().forEach(function (b) {
-        if (!engine.isCaptain(b)) return;
-        var bt = s.cur.bet;
-        if (!bt && Math.random() < 0.15) later('bet' + n + b, 1500 + Math.random() * 2000, function () { if (engine.s.phase === 'intro') engine.act(b, { a: 'bet' }); });
-        if (bt && bt.status === 'pending' && bt.need.indexOf(s.players[b].team) >= 0) later('ans' + n + b, 1200 + Math.random() * 1500, function () { engine.act(b, { a: 'betAns', yes: Math.random() < 0.75 }); });
-      });
-    }
-    if (s.phase === 'play' && s.cur) {
-      var k = s.cur.started;
-      s.cur.playersIn.forEach(function (b) {
-        if (!s.players[b] || !s.players[b].bot || s.cur.scores[b]) return;
-        if (!s.cur.startAt) { later('rd' + k + b, 700 + Math.random() * 2200, function () { engine.act(b, { a: 'ready' }); }); return; }
-        var dur = GM[s.cur.game].dur * 1000;
-        later('sc' + k + b, Math.max(0, s.cur.startAt - Date.now()) + Math.min(dur, 2500 + Math.random() * dur * 0.9), function () {
-          if (engine.s.phase !== 'play') return;
-          var r = MiniGames.bot(engine.s.cur.game);
-          engine.act(b, { a: 'score', score: r.score, label: r.label });
-        });
-      });
-    }
-  }
-
   /* ---------- دقات الريس ---------- */
   setInterval(function () {
     if (!engine || (role !== 'host' && !demo)) return;
@@ -288,7 +242,7 @@
     var code = (room && room.code && V.screen === 'room' && !demo) ? '<span class="code-chip num">' + esc(room.code) + '</span>' : (demo && V.screen === 'room' ? '<span class="code-chip">تجربة</span>' : '');
     return '<div class="topline" aria-hidden="true"></div><div class="topbar">' +
       '<div class="brand"><b>لعّيبة</b>' + code + '</div>' +
-      '<div class="btn-row" style="flex:0 0 auto;gap:8px"><button class="icon-btn" data-a="theme" aria-label="الوضع الفاتح والداكن">◐</button><button class="icon-btn" data-a="help" aria-label="كيف منلعب؟">؟</button></div></div>';
+      '<div class="btn-row" style="flex:0 0 auto;gap:8px">' + (V.screen === 'room' && S && isHost() && S.phase !== 'setup' ? '<button class="icon-btn" data-a="players" aria-label="اللاعبين">👥</button>' : '') + '<button class="icon-btn" data-a="theme" aria-label="الوضع الفاتح والداكن">◐</button><button class="icon-btn" data-a="help" aria-label="كيف منلعب؟">؟</button></div></div>';
   }
 
   function keepFocus(fn) {
@@ -337,14 +291,13 @@
       '<div class="card">' +
       '<button class="btn red wide" data-a="toForm" data-k="host">🎪 افتح قعدة وصير الريس</button>' +
       '<button class="btn blue wide" data-a="toForm" data-k="join">🎟️ فوت بكود</button>' +
-      '<button class="btn ghost wide" data-a="toForm" data-k="demo">🤖 جرّب لحالك مع لاعبين وهميين</button>' +
-      (noServer ? '<p class="muted center" style="margin:0;font-size:14px">هالنسخة للتجربة بس. اللعب مع صحابك بيشتغل لما ترفع اللعبة على السيرفر.</p>' : '') +
-      '</div><p class="sig">إعداد م. إياد حلوبي</p>';
+      (noServer ? '<p class="muted center" style="margin:0;font-size:14px">السيرفر مو واصل هلّق. تأكد من النت وجرّب كمان شوي.</p>' : '') +
+      '</div>' + (standalone() ? '' : '<button class="btn sm ghost" data-a="install" style="align-self:center">📲 نزّلها كتطبيق عموبايلك</button>') + '<p class="sig">إعداد م. إياد حلوبي</p>';
   }
 
   function formView() {
     var f = V.form, k = V.formKind;
-    var title = k === 'join' ? 'فوت عالقعدة 🎟️' : k === 'host' ? 'قبل ما تفتح القعدة 🎪' : 'جرّب لحالك 🤖';
+    var title = k === 'join' ? 'فوت عالقعدة 🎟️' : 'قبل ما تفتح القعدة 🎪';
     var ph = f.photo ? 'background-image:url(' + f.photo + ')' : '';
     return '<div class="card">' +
       '<div class="sheet-h"><h2 class="h-sec">' + title + '</h2><button class="icon-btn" data-a="home" aria-label="رجوع">→</button></div>' +
@@ -355,7 +308,7 @@
       '<div class="field"><label class="label" for="f-name">اسمك (اختياري)</label><input class="input" id="f-name" maxlength="20" autocomplete="off" placeholder="شو بينادوك بالقعدة؟" value="' + esc(f.name) + '"></div>' +
       '<div class="field"><span class="label">شب ولا صبية؟ (لازم)</span><div class="chips"><button class="chip big ' + (f.g === 'm' ? 'on' : '') + '" data-a="g" data-v="m">🧔 شب</button><button class="chip big ' + (f.g === 'f' ? 'on' : '') + '" data-a="g" data-v="f">👩 صبية</button></div></div>' +
       (V.formErr ? '<div class="err">' + esc(V.formErr) + '</div>' : '') +
-      '<button class="btn red wide" data-a="submitForm">' + (k === 'join' ? 'فوت 🚪' : k === 'host' ? 'افتح القعدة 🎪' : 'يلا نجرّب 🚀') + '</button></div>';
+      '<button class="btn red wide" data-a="submitForm">' + (k === 'join' ? 'فوت 🚪' : 'افتح القعدة 🎪') + '</button></div>';
   }
 
   function roomView() {
@@ -385,7 +338,10 @@
   function setupView() {
     var c = S.cfg, m = S.meta;
     var types = ['شلة', 'رفقة', 'عيلة', 'شغل', 'غير شي'];
-    var gl = MiniGames.ids.map(function (id) { var on = c.games.indexOf(id) >= 0; return '<button class="chip ' + (on ? 'on' : '') + '" data-a="cfgGame" data-v="' + id + '">' + GM[id].emoji + ' ' + GM[id].name + '</button>'; }).join('');
+    var gl = MiniGames.ids.map(function (id) {
+      if (OFFG.indexOf(id) >= 0) return '<span class="chip locked" title="قريباً">🔒 ' + GM[id].name + ' <small>قريباً</small></span>';
+      var on = c.games.indexOf(id) >= 0; return '<button class="chip ' + (on ? 'on' : '') + '" data-a="cfgGame" data-v="' + id + '">' + GM[id].emoji + ' ' + GM[id].name + '</button>';
+    }).join('');
     return '<div class="card"><h2 class="h-sec">جهّز القعدة 🎪</h2>' +
       '<div class="field"><label class="label" for="q-name">اسم القعدة (لازم)</label><input class="input" id="q-name" maxlength="30" placeholder="مثلاً: سهرة الخميس" value="' + esc(m.name) + '"></div>' +
       '<div class="field"><span class="label">نوع القعدة</span><div class="chips">' + types.map(function (t) { return chip('metaType', t, m.type === t, t); }).join('') + '</div>' +
@@ -396,7 +352,7 @@
         '<span class="label">مين بيلعب من الفريق؟</span><div class="chips">' + chip('cfg', 'teamStyle:all', c.teamStyle === 'all', '🫂 الفريق كله بكل جولة') + chip('cfg', 'teamStyle:rotate', c.teamStyle === 'rotate', '🔄 واحد من كل فريق بالدور') + '</div>' +
         '<p class="muted" style="margin:0;font-size:14px">' + (c.teamStyle === 'all' ? 'كل الأعضاء بيلعبوا وبينحسب معدّل الفريق.' : 'كل جولة بيلعب عضو من كل فريق، وبيتبدّلوا بالدور.') + ' قائد كل فريق 👑 هو اللي بيراهن.</p>' : '') +
       '</div>' +
-      '<div class="card"><span class="label">الألعاب (' + c.games.length + ' من 12)</span><div class="chips">' + gl + '</div>' +
+      '<div class="card"><span class="label">الألعاب (' + c.games.length + ' من ' + liveGames().length + ')</span><div class="chips">' + gl + '</div>' +
       '<span class="label">كم جولة؟</span><div class="stepper"><button class="btn sm ghost" data-a="rounds" data-v="-1" aria-label="أقل">−</button><span class="val num">' + c.rounds + '</span><button class="btn sm ghost" data-a="rounds" data-v="1" aria-label="أكتر">+</button></div>' +
       '<p class="muted" style="margin:0;font-size:14px">' + roundsNote(c) + '</p>' +
       '<span class="label">الألقاب بالآخر</span><div class="chips">' + chip('cfg', 'titles:one', c.titles === 'one', '🏆 لقب واحد للفايز') + chip('cfg', 'titles:three', c.titles === 'three', '🥇🥈🥉 تلات مراتب') + '</div></div>' +
@@ -418,8 +374,6 @@
     if (!demo) {
       h += '<div class="ticket"><div class="qr" id="qr"></div><div class="tk-side"><span class="label" style="color:var(--onc)">كود القعدة</span><div class="big-code num">' + esc(S.code) + '</div>' +
         '<button class="btn sm ghost" data-a="copyLink">🔗 انسخ الرابط</button></div></div>';
-    } else {
-      h += '<div class="banner" style="background:var(--blue)"><span>وضع التجربة: اللاعبين الوهميين بيلعبوا لحالهن 🤖</span><button class="btn sm ghost" data-a="addBot">+ لاعب وهمي</button></div>';
     }
     h += '<div class="card"><div class="sheet-h"><h2 class="h-sec">' + esc(S.meta.name) + ' <span class="muted" style="font-size:15px">· ' + esc(qType()) + '</span></h2><span class="code-chip num">' + ids.length + ' 👤</span></div>';
     if (S.cfg.mode === 'teams') {
@@ -439,7 +393,7 @@
     if (host) {
       h += '<div class="btn-row"><button class="btn ghost" data-a="backSetup">⚙️ الإعدادات</button>' + (S.cfg.mode === 'teams' ? '<button class="btn pink" data-a="shuffle">🎲 فرز عشوائي</button>' : '') + '</div>' +
         '<button class="btn red wide" data-a="start" ' + (ids.length < 2 ? 'disabled' : '') + '>يلا نبلّش ▶</button>' +
-        (ids.length < 2 ? '<p class="center muted" style="margin:0">لازم لاعبين اتنين عالأقل' + (demo ? '، زيد لاعب وهمي' : '') + '</p>' : '');
+        (ids.length < 2 ? '<p class="center muted" style="margin:0">لازم لاعبين اتنين عالأقل</p>' : '');
     } else h += '<div class="card center"><b class="dots-anim">بانتظار الريس يبلّش</b></div>';
     return h;
   }
@@ -575,7 +529,7 @@
       c.playersIn.map(function (id) {
         var p = P(id); if (!p) return '';
         var st = started ? (c.scores[id] ? '✔️' : (p.on ? '<span class="dots-anim">🎮</span>' : '📵')) : (c.ready[id] ? '✋' : (p.on ? '<span class="dots-anim">⏳</span>' : '📵'));
-        return '<div class="wrow">' + avatar(id, 'sm') + '<span class="nm">' + esc(p.name) + '</span><span class="st">' + st + '</span></div>';
+        return '<div class="wrow' + (isHost() && id !== ME ? ' wbtn" data-a="player" data-v="' + id : '') + '">' + avatar(id, 'sm') + '<span class="nm">' + esc(p.name) + (p.on ? '' : ' <span class="muted" style="font-size:12px">مو موصول</span>') + '</span><span class="st">' + st + '</span></div>';
       }).join('') + '</div></div>';
     if (isHost()) {
       if (!started) h += '<button class="btn red wide" data-a="goNow">بلّشوا هلّق بلا ما نستنى ⚡</button>';
@@ -767,13 +721,21 @@
       '<span class="label">صورة الشلة</span><div class="btn-row"><button class="btn sm ghost" data-a="pickPhoto" data-for="group">🖼️ من الصور</button><button class="btn sm ghost" data-a="selfie" data-for="group">🤳 سيلفي مع مؤقت</button>' + (S.groupPhoto ? '<button class="btn sm ghost" data-a="rmGroup">🗑️ شيلها</button>' : '') + '</div>' +
       (S.groupPhoto && PH.__group ? '<img src="' + PH.__group + '" alt="صورة الشلة" style="border:3px solid var(--line);border-radius:14px;width:100%;max-height:220px;object-fit:cover">' : '') + '</div>';
   }
+  function standalone() { try { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; } catch (e) { return false; } }
   function installCard() {
-    var standalone = window.matchMedia && matchMedia('(display-mode: standalone)').matches;
-    if (standalone) return '';
-    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    return '<div class="card install"><h2 class="h-sec">خلّي اللعبة عموبايلك 📲</h2>' +
-      (installEvt ? '<button class="btn" data-a="install">نزّلها كتطبيق</button>' :
-        '<p style="margin:0;font-weight:700">' + (ios ? 'بالآيفون: اكبس زر المشاركة ⬆️ تحت، وبعدين «إضافة إلى الشاشة الرئيسية» ➕' : 'من قائمة المتصفح (⋮) اختار «تثبيت التطبيق» أو «إضافة للشاشة الرئيسية».') + '</p>') + '</div>';
+    if (standalone()) return '';
+    return '<div class="card install"><h2 class="h-sec">خلّي اللعبة عموبايلك 📲</h2><p style="margin:0;font-weight:700">بتصير أيقونة عالشاشة الرئيسية، وبتفتحها متل أي تطبيق بالقعدة الجاية.</p>' +
+      '<button class="btn" data-a="install">📲 نزّلها كتطبيق</button></div>';
+  }
+  function installSheet() {
+    var ua = navigator.userAgent, ios = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+    var inApp = /Instagram|FBAN|FBAV|Line\//i.test(ua);
+    var steps = inApp ? [['🌐', 'افتحها بالمتصفح أول', 'انت فاتحها من جوّا إنستغرام. اكبس (⋯) فوق واختار «فتح في المتصفح»، وبعدين رجاع اكبس «نزّلها كتطبيق».']]
+      : ios ? [['🧭', 'لازم تكون بـ Safari', 'إذا فاتحها بمتصفح تاني، انسخ الرابط وافتحه بـ Safari.'], ['⬆️', 'اكبس زر المشاركة', 'المربع اللي طالع منه سهم، تحت بنص الشاشة.'], ['➕', '«إضافة إلى الشاشة الرئيسية»', 'نزّل بالقائمة لتلاقيها، وبعدين اكبس «إضافة».']]
+      : [['⋮', 'افتح قائمة المتصفح', 'التلات نقاط فوق بالزاوية بـ Chrome.'], ['📲', '«تثبيت التطبيق» أو «إضافة للشاشة الرئيسية»', 'وبعدين اكبس «تثبيت».']];
+    openSheet(sheetHead('نزّلها كتطبيق 📲') + steps.map(function (x) { return '<div class="how-step"><span class="ic">' + x[0] + '</span><div><b>' + x[1] + '</b><span class="muted">' + x[2] + '</span></div></div>'; }).join('') + '<button class="btn" data-close>تمام 👍</button>', function (sh) {
+      sh.querySelectorAll('[data-close]').forEach(function (b) { b.onclick = closeSheet; });
+    });
   }
 
   /* ---------- الستوري ---------- */
@@ -829,6 +791,7 @@
 
   /* ---------- بعد الرسم ---------- */
   function after() {
+    if (S && isHost() && S.phase === 'setup' && S.cfg.games.some(function (id) { return OFFG.indexOf(id) >= 0; })) setTimeout(fixGames, 0);
     if (V.playingKey && (!S || S.phase !== 'play' || !S.cur || (S.cur.started + ':' + ME) !== V.playingKey)) {
       setTimeout(function () { if (V.playingKey) { var k = V.playingKey; closeGame(); if (!V.myScores[k]) toast('الريس وقّف الجولة ⏹️'); } }, 0);
     }
@@ -869,7 +832,7 @@
     home: function () { if (demo || V.kicked) { location.href = location.pathname; return; } V.screen = 'cover'; V.formErr = ''; render(); },
     toForm: function (v, b) {
       var k = b.dataset.k;
-      if ((k === 'host' || k === 'join') && V.server === false) { toast('هالنسخة للتجربة بس، جرّب لحالك 🤖'); return; }
+      if ((k === 'host' || k === 'join') && V.server === false) { toast('السيرفر مو واصل هلّق، جرّب كمان شوي'); return; }
       V.formKind = k; V.form = { name: '', g: '', photo: null, code: V.form.code || '' }; V.formErr = ''; V.screen = 'form'; render();
     },
     g: function (v) { V.form.g = v; V.formErr = ''; render(); },
@@ -882,7 +845,6 @@
       if (!f.g) { V.formErr = 'اختار شب ولا صبية لنكمّل 🙏'; render(); return; }
       var prof = { name: f.name.trim(), g: f.g, photo: f.photo || null };
       V.pendingProfile = prof; LS.set('lb_prof', prof);
-      if (V.formKind === 'demo') { startDemo(prof); return; }
       if (V.formKind === 'host') { startNet(); send({ t: 'create', pid: ME }); V.screen = 'room'; S = null; render(); return; }
       var code = (f.code || '').toUpperCase();
       if (!/^[A-Z]{5}$/.test(code)) { V.formErr = 'الكود 5 أحرف إنكليزية'; render(); return; }
@@ -895,6 +857,7 @@
     metaType: function (v) { act({ a: 'meta', type: v }); },
     cfg: function (v) { var p = v.split(':'), o = {}; o[p[0]] = p[0] === 'teamCount' ? +p[1] : p[1]; act({ a: 'cfg', cfg: o }); },
     cfgGame: function (v) {
+      if (OFFG.indexOf(v) >= 0) return;
       var gs = S.cfg.games.slice(), i = gs.indexOf(v);
       if (i >= 0) { if (gs.length <= 1) { toast('خلّي لعبة وحدة عالأقل'); return; } gs.splice(i, 1); } else gs.push(v);
       act({ a: 'cfg', cfg: { games: gs } });
@@ -904,15 +867,15 @@
       var n = document.getElementById('q-name'); if (n && n.value.trim() !== S.meta.name) act({ a: 'meta', name: n.value });
       var name = n ? n.value.trim() : S.meta.name;
       if (!name) { V.setupErr = 'اكتب اسم للقعدة قبل ما تفتح الباب'; render(); var nn = document.getElementById('q-name'); if (nn) nn.focus(); return; }
+      fixGames();
       act({ a: 'openLobby' });
-      if (demo) { for (var i = 0; i < 4; i++) addBot(); }
     },
     backSetup: function () { act({ a: 'backToSetup' }); },
     shuffle: function () { act({ a: 'shuffleTeams' }); },
     joinTeam: function (v) { act({ a: 'joinTeam', team: v }); },
     renameTeam: function (v) { var t = teamById(v); inputSheet('اسم الفريق', t.name, function (val) { act({ a: 'renameTeam', team: v, name: val }); }); },
     player: function (v) { playerSheet(v); },
-    addBot: function () { addBot(); },
+    players: function () { playersSheet(); },
     copyLink: function () { copy(shareLink()); },
     start: function () { act({ a: 'start' }); },
     pass: function () { act({ a: 'pass' }); },
@@ -937,7 +900,10 @@
     storyOpt: function (v) { var o = { a: 'story' }; o[v] = !S.story[v]; act(o); },
     dlStory: function () { downloadStory(); },
     rmGroup: function () { act({ a: 'groupPhoto', photo: null }); },
-    install: function () { if (installEvt) { installEvt.prompt(); installEvt = null; render(); } },
+    install: function () {
+      if (installEvt) { var ev = installEvt; installEvt = null; try { ev.prompt(); ev.userChoice.then(function (r) { if (r && r.outcome === 'accepted') toast('انزلت عالشاشة الرئيسية ✔'); render(); }); } catch (e) { installSheet(); } return; }
+      installSheet();
+    },
     rematch: function () { confirmSheet('نبلّش قعدة جديدة بنفس الناس؟ النتيجة الحالية رح تنمسح.', 'يلا', function () { act({ a: 'rematch' }); }); }
   };
 
@@ -991,6 +957,19 @@
       var kk = s.querySelector('#ps-kick'); if (kk) kk.onclick = function () { closeSheet(); confirmSheet('بدك تطلّع ' + p.name + '؟ ما رح يقدر يرجع.', 'طلّعه', function () { act({ a: 'kick', pid: pid }); }); };
     });
   }
+  function playersSheet() {
+    var ids = activeIds();
+    var on = ids.filter(function (id) { return S.players[id].on; }).length;
+    var h = sheetHead('اللاعبين 👥 (' + on + ' من ' + ids.length + ' موصولين)');
+    h += '<div class="waitlist">' + ids.map(function (id) {
+      var p = P(id), t = S.cfg.mode === 'teams' && p.team ? teamById(p.team) : null;
+      return '<button class="wrow wbtn" data-pid="' + id + '">' + avatar(id, 'sm') + '<span class="nm">' + esc(p.name) + (id === ME ? ' (أنا)' : '') + (t ? ' <span class="muted" style="font-size:13px">' + t.emoji + '</span>' : '') + '</span>' +
+        '<span class="st-tag ' + (p.on ? 'on' : 'off') + '">' + (p.on ? 'موصول' : '📵 مو موصول') + '</span></button>';
+    }).join('') + '</div><p class="muted" style="margin:0;font-size:14px">اكبس على أي حدا لتعدّل اسمو أو تطلّعو من القعدة، حتى لو طلع لحالو.</p>';
+    openSheet(h, function (sh) {
+      sh.querySelectorAll('[data-pid]').forEach(function (b) { b.onclick = function () { var id = b.dataset.pid; closeSheet(); playerSheet(id); }; });
+    });
+  }
   function helpSheet() {
     var h = sheetHead('كيف منلعب؟ 🎪');
     var steps = [
@@ -1004,7 +983,7 @@
     ];
     h += steps.map(function (s) { return '<div class="how-step"><span class="ic">' + s[0] + '</span><div><b>' + s[1] + '</b><span class="muted">' + s[2] + '</span></div></div>'; }).join('');
     h += '<div class="card"><b>أدوات الريس 🎩</b><span class="muted">يعدّل الإعدادات، يفرز الفرق، يمرّر لعبة، يبلّش بلا ما يستنى الكل، يعيد اللعبة إذا ما فهموها، يكشف النتيجة أو يخبّيها للآخر، يسكّر الجولة، يعدّل الأسماء، يطلّع حدا، ويسلّم الريسة. وإذا طلع، بعد 45 ثانية حدا تاني بيقدر يصير الريس.</span></div>';
-    h += '<div class="card"><b>الألعاب الـ12</b><div class="chips">' + MiniGames.ids.map(function (id) { return '<span class="chip">' + GM[id].emoji + ' ' + GM[id].name + '</span>'; }).join('') + '</div><span class="muted" style="font-size:14px">ألعاب المايك والحركة بتطلب إذن، وإذا ما انعطى في بديل باللمس.</span></div>';
+    h += '<div class="card"><b>الألعاب</b><div class="chips">' + MiniGames.ids.map(function (id) { return OFFG.indexOf(id) >= 0 ? '<span class="chip locked">🔒 ' + GM[id].name + ' <small>قريباً</small></span>' : '<span class="chip">' + GM[id].emoji + ' ' + GM[id].name + '</span>'; }).join('') + '</div><span class="muted" style="font-size:14px">ألعاب المايك والحركة بتطلب إذن، وإذا ما انعطى في بديل باللمس.</span></div>';
     h += '<p class="muted" style="margin:0;font-size:14px">مرجع اللعبة: فكرة ألعاب الحفلات القصيرة (Party mini-games) بنسخة قعدة. إعداد م. إياد حلوبي.</p>';
     if (V.screen === 'room' && !demo) h += '<button class="btn ghost" id="hp-leave">🚪 اطلع من القعدة</button>';
     openSheet(h, function (s) {
@@ -1131,12 +1110,11 @@
   (function boot() {
     applySkin();
     var urlCode = (qs('r') || '').toUpperCase().replace(/[^A-Z]/g, '');
-    var wantDemo = qs('demo') === '1';
     render();
     checkServer().then(function (ok) {
       V.server = ok;
-      if (wantDemo) { V.formKind = 'demo'; V.screen = 'form'; render(); return; }
       if (!ok) { render(); return; }
+      try { fetch('config', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) { OFFG = (j && j.off) || []; render(); }).catch(function () { }); } catch (e) { }
       if (urlCode && (!room || room.code !== urlCode)) {
         room = null; LS.del('lb_room');
         V.formKind = 'join'; V.form.code = urlCode; V.screen = 'form'; render(); return;

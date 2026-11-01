@@ -319,20 +319,20 @@
 
   G.green = {
     name: 'الضو الأخضر', emoji: '🚦', dur: 15, needs: '', color: '#22C17A',
-    hint: 'الشاشة بتتلوّن. اكبس بس لما تصير خضرا. أي لون تاني بينقّصلك.',
+    hint: 'الشاشة بتتلوّن. اكبس بس لما تصير خضرا 🟩. أي لون تاني بينقّصلك.',
     label: function (r) { return r.hits + ' صح · ' + r.wrong + ' غلط'; },
     score: function (r) { return r.hits * 1000 - r.wrong * 1200 - Math.round((r.rt || 600) / 10); },
     bot: function () { return { hits: ri(3, 9), wrong: ri(0, 3), rt: rand(280, 600) }; },
     start: function (api) {
       var cols = [{ c: '#22C17A', g: 1 }, { c: '#FF4B3E' }, { c: '#2F6BFF' }, { c: '#FFC21A' }, { c: '#FF7EC0' }];
-      api.body.innerHTML = '<div class="gr-field" id="gf"><div class="gr-msg" id="gm">استنى الأخضر...</div></div><div class="g-row"><span id="gh">✔ 0</span><span id="gw">✖ 0</span></div>';
+      api.body.innerHTML = '<div class="gr-field" id="gf"><div class="gr-msg" id="gm"></div></div><div class="g-row"><span id="gh">✔ 0</span><span id="gw">✖ 0</span></div>';
       var gf = api.body.querySelector('#gf'), gm = api.body.querySelector('#gm');
       var hits = 0, wrong = 0, rts = [], cur = null, shownAt = 0, tapped = false, over = false, nextAt = api.now() + 500, lastWasGreen = false;
       function show() {
         var isG = !lastWasGreen && R() < 0.36;
         cur = isG ? cols[0] : cols[ri(1, cols.length - 1)];
         lastWasGreen = isG;
-        gf.style.background = cur.c; gm.textContent = isG ? 'هلّق! 👆' : '✋';
+        gf.style.background = cur.c; gm.textContent = '';
         shownAt = api.now(); tapped = false;
         nextAt = shownAt + rand(550, 900);
       }
@@ -491,8 +491,8 @@
   };
 
   G.simon = {
-    name: 'احفظ الترتيب', emoji: '🧠', dur: 60, needs: '', color: '#00B5C7',
-    hint: 'الأزرار بتضوي بترتيب، عيدو متلو. كل مرة بيزيد واحد. أول غلطة بتطلع.',
+    name: 'احفظ الترتيب', emoji: '🧠', dur: 600, needs: '', color: '#00B5C7',
+    hint: 'الأزرار بتضوي بترتيب، عيدو متلو. كل مرة بيزيد واحد، وبتضل تلعب لحد أول غلطة.',
     label: function (r) { return r.len ? 'حفظ ' + r.len + ' بالترتيب' : 'ما حفظ شي'; },
     score: function (r) { return r.len * 1000; },
     bot: function () { return { len: ri(3, 10) }; },
@@ -526,22 +526,22 @@
           if (inp >= seq.length) { best = seq.length; sl.textContent = best; listening = false; sh.textContent = '✔ برافو'; setTimeout(play, 600); }
         });
       });
-      api.timer(60, end);
+      api.timer(600, end, true);
       setTimeout(play, 400);
     }
   };
 
   G.dots = {
-    name: 'عدّ النقاط', emoji: '🔢', dur: 40, needs: '', color: '#C2562B',
+    name: 'عدّ النقاط', emoji: '🔢', dur: 60, needs: '', color: '#C2562B',
     hint: 'النقاط بتطلع لحظة وبتختفي. قدّر كم وحدة كانت. 4 مرات، والأقل غلط بيربح.',
     label: function (r) { return r.err === 0 ? 'كلهن صح 🎯' : 'غلط بـ ' + r.err + ' بالمجموع'; },
     score: function (r) { return -r.err; },
     bot: function () { return { err: ri(2, 30) }; },
     start: function (api) {
       var S = 300, ROUNDS = 4;
-      api.body.innerHTML = '<div class="g-center"><div class="g-sub" id="dh">جولة 1 من 4</div><canvas class="dt" id="dc" width="' + S * 2 + '" height="' + S * 2 + '"></canvas>' +
+      api.body.innerHTML = '<div class="g-center"><div class="g-sub" id="dh">جولة 1 من 4</div><div class="dt-rb" id="rb" hidden></div><canvas class="dt" id="dc" width="' + S * 2 + '" height="' + S * 2 + '"></canvas>' +
         '<div class="dt-in" id="di" hidden><div class="dt-val" id="dv">؟</div><div class="dt-keys" id="dk"></div></div></div>';
-      var cv = api.body.querySelector('#dc'), cx = cv.getContext('2d'), di = api.body.querySelector('#di'), dv = api.body.querySelector('#dv'), dh = api.body.querySelector('#dh');
+      var cv = api.body.querySelector('#dc'), cx = cv.getContext('2d'), di = api.body.querySelector('#di'), dv = api.body.querySelector('#dv'), dh = api.body.querySelector('#dh'), rb = api.body.querySelector('#rb');
       var round = 0, N = 0, val = '', err = 0, over = false;
       var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '✔'];
       var dk = api.body.querySelector('#dk');
@@ -567,18 +567,28 @@
       }
       function next() {
         if (round >= ROUNDS) return finish();
-        round++; dh.textContent = 'جولة ' + round + ' من ' + ROUNDS; N = ri(10 + round * 3, 22 + round * 6);
-        di.hidden = true; cv.hidden = false; val = ''; dv.textContent = '؟';
-        paint(true); beep(600, 0.05, 'square', 0.04);
-        setTimeout(function () { if (over) return; paint(false); cv.hidden = true; di.hidden = false; }, 900);
+        round++; N = ri(10 + round * 3, 22 + round * 6);
+        di.hidden = true; cv.hidden = true; val = ''; dv.textContent = '؟';
+        rb.hidden = false; rb.innerHTML = '<div class="dt-rn">' + round + ' / ' + ROUNDS + '</div><div class="g-sub">جولة ' + ['', 'أولى', 'تانية', 'تالتة', 'رابعة'][round] + '... ركّز 👀</div>';
+        var n = 3;
+        (function cd() {
+          if (over) return;
+          if (n > 0) { dh.textContent = 'بعد ' + n; n--; beep(440, 0.06, 'square', 0.03); setTimeout(cd, 550); return; }
+          rb.hidden = true; cv.hidden = false; dh.textContent = 'جولة ' + round + ' من ' + ROUNDS;
+          paint(true); beep(700, 0.06, 'square', 0.04);
+          setTimeout(function () { if (over) return; paint(false); cv.hidden = true; di.hidden = false; dh.textContent = 'كم نقطة كانت؟'; }, 900);
+        })();
       }
       function submit() {
         var g = parseInt(val, 10) || 0, e = Math.abs(g - N); err += e;
-        di.hidden = true; cv.hidden = false; paint(false); dh.textContent = e === 0 ? '🎯 بالضبط! كانوا ' + N : 'كانوا ' + N + ' (غلطت بـ ' + e + ')';
-        setTimeout(next, 1000);
+        di.hidden = true; cv.hidden = true; rb.hidden = false;
+        rb.innerHTML = '<div class="dt-rn">' + (e === 0 ? '🎯' : N) + '</div><div class="g-sub">' + (e === 0 ? 'بالضبط! كانوا ' + N : 'كانوا ' + N + '، وانت قلت ' + g) + '</div>' +
+          (round < ROUNDS ? '<button class="btn" id="dnx">الجولة الجاية ▶</button>' : '<button class="btn" id="dnx">خلّصت ✔</button>');
+        dh.textContent = 'جولة ' + round + ' من ' + ROUNDS;
+        rb.querySelector('#dnx').addEventListener('click', next);
       }
       function finish() { if (over) return; over = true; api.finish(G.dots.score({ err: err }), G.dots.label({ err: err })); }
-      api.timer(40, function () { if (over) return; if (!di.hidden && val) { var g = parseInt(val, 10) || 0; err += Math.abs(g - N); round++; } err += (ROUNDS - round) * 15; finish(); });
+      api.timer(60, function () { if (over) return; if (!di.hidden && val) { var g = parseInt(val, 10) || 0; err += Math.abs(g - N); round++; } err += (ROUNDS - round) * 15; finish(); });
       next();
     }
   };
