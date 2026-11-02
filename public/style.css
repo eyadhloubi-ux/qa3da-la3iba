@@ -458,3 +458,8 @@ body, #stage, :root[data-skin] body, :root[data-skin] #stage { background-image:
 
 .chip.locked { opacity: .55; border-style: dashed; box-shadow: none; cursor: default; }
 .chip.locked small { font-size: 11px; font-weight: 700; }
+
+.mic-m { display: flex; align-items: center; gap: 8px; width: min(260px, 80%); margin: 0 auto; }
+.mic-m b { flex: 1; height: 14px; border: 2px solid var(--line); border-radius: 999px; background: var(--soft); overflow: hidden; }
+.mic-f { display: block; height: 100%; width: 0; background: var(--mint); transition: width .08s linear; }
+.mic-test { display: flex; flex-direction: column; gap: 8px; align-items: center; font-size: 15px; }

@@ -15,10 +15,12 @@ const ROOM_TTL_MS = 8 * 60 * 60 * 1000;
 
 const app = express();
 app.disable('x-powered-by');
+try { app.use(require('compression')()); } catch (e) { }
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, p) {
     if (/\.(html|js|css|webmanifest)$/.test(p)) res.setHeader('Cache-Control', 'no-cache');
+    else if (/\.(png|svg)$/.test(p)) res.setHeader('Cache-Control', 'public, max-age=604800');
   }
 }));
 app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
@@ -279,3 +281,9 @@ setInterval(() => {
 }, 25000);
 
 loadStats().then(() => server.listen(PORT, () => console.log('قعدة لعّيبة على البورت ' + PORT)));
+
+/* ضل صاحي: Render المجاني بينام بعد 15 دقيقة بلا زيارات، والصحوة بتاخد ~30 ثانية */
+if (process.env.RENDER_EXTERNAL_URL && process.env.KEEP_AWAKE !== 'off') {
+  const ping = () => { try { require('https').get(process.env.RENDER_EXTERNAL_URL + '/health', r => r.resume()).on('error', () => { }); } catch (e) { } };
+  setInterval(ping, 10 * 60 * 1000);
+}

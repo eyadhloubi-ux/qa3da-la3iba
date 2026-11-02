@@ -142,7 +142,7 @@
     }
     target = left[rnd(left.length)];
     s.phase = 'pick';
-    s.cur = { n: s.roundNo + 1, game: target, spin: { list: left, target: left.indexOf(target), at: now(), dur: s.cfg.order === 'wheel' ? 4200 : 2600, id: rnd(1e9) } };
+    s.cur = { n: s.roundNo + 1, game: target, spin: { list: left, target: left.indexOf(target), at: 0, dur: s.cfg.order === 'wheel' ? 4200 : 2600, id: rnd(1e9) } };
     this.emit();
   };
   P.toIntro = function (game) {
@@ -511,8 +511,14 @@
         this.pick();
         return;
       }
+      case 'spin': {
+        if (s.phase !== 'pick' || !s.cur || !s.cur.spin || s.cur.spin.at) return;
+        s.cur.spin.at = now() + 700;
+        this.emit();
+        return;
+      }
       case 'spinDone': {
-        if (s.phase !== 'pick' || !s.cur) return;
+        if (s.phase !== 'pick' || !s.cur || !s.cur.spin || !s.cur.spin.at) return;
         this.toIntro(s.cur.game);
         return;
       }

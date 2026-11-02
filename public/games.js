@@ -39,21 +39,45 @@
           var ac = audio();
           if (!ac) { stream.getTracks().forEach(function (t) { t.stop(); }); return resolve(null); }
           var src = ac.createMediaStreamSource(stream);
-          var an = ac.createAnalyser(); an.fftSize = 1024;
+          var an = ac.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.35;
+          an.minDecibels = -95; an.maxDecibels = -20;
           src.connect(an);
-          var buf = new Uint8Array(an.fftSize);
-          resolve({
+          var fb = new Uint8Array(an.frequencyBinCount);
+          var hi = Math.max(4, Math.round(1400 / (ac.sampleRate / an.fftSize)));
+          var cal = loadCal();
+          var m = {
+            cal: cal,
+            // طاقة الترددات الواطية (صوت الهوا بالنفخ) بين 0 و1
             level: function () {
-              an.getByteTimeDomainData(buf);
-              var s = 0; for (var i = 0; i < buf.length; i++) { var v = (buf[i] - 128) / 128; s += v * v; }
-              return Math.sqrt(s / buf.length);
+              an.getByteFrequencyData(fb);
+              var sum = 0; for (var i = 1; i <= hi; i++) sum += fb[i];
+              return sum / hi / 255;
             },
-            stop: function () { try { stream.getTracks().forEach(function (t) { t.stop(); }); src.disconnect(); } catch (e) { } }
-          });
+            // 0 = ما في نفخ، 1 = نفخ قوي
+            blow: function () {
+              var lv = m.level();
+              if (lv < m.cal.base) m.cal.base = m.cal.base * 0.9 + lv * 0.1; else m.cal.base += (lv - m.cal.base) * 0.002;
+              var top = Math.max(m.cal.peak, m.cal.base + 0.12);
+              var thr = m.cal.base + Math.max(0.05, (top - m.cal.base) * 0.28);
+              if (lv > m.cal.peak) m.cal.peak = lv;
+              return lv <= thr ? 0 : Math.min(1.4, (lv - thr) / Math.max(0.05, top - thr));
+            },
+            heard: false,
+            stop: function () { saveCal(m.cal); try { stream.getTracks().forEach(function (t) { t.stop(); }); src.disconnect(); } catch (e) { } }
+          };
+          resolve(m);
         }).catch(function () { if (!done) { done = true; clearTimeout(to); resolve(null); } });
       } catch (e) { resolve(null); }
     });
   }
+
+  function loadCal() {
+    var c = null; try { c = JSON.parse(localStorage.getItem('lb_mic') || 'null'); } catch (e) { }
+    if (!c || typeof c.base !== 'number') c = { base: 0.2, peak: 0 };
+    c.peak = Math.max(0, Math.min(c.peak || 0, 0.95)) * 0.85; // نخفّف الذروة القديمة شوي
+    return c;
+  }
+  function saveCal(c) { try { localStorage.setItem('lb_mic', JSON.stringify({ base: c.base, peak: c.peak })); } catch (e) { } }
 
   /* ---------- حساس الميلان ---------- */
   function getTilt() {
@@ -84,6 +108,9 @@
     return n + ' ' + many;
   }
 
+  function micMeter() { return '<div class="mic-m" aria-hidden="true"><span>💨</span><b><i class="mic-f"></i></b></div>'; }
+  function paintMeter(b, v) { var f = b.querySelector('.mic-f'); if (f) f.style.width = Math.min(100, v * 75 + (v > 0 ? 25 : 0)) + '%'; }
+
   /* ---------- تعريف الألعاب ---------- */
   var G = {};
 
@@ -91,7 +118,7 @@
     name: 'نفّخ البالونة', emoji: '🎈', dur: 15, needs: 'mic', color: '#FF4B3E',
     hint: 'انفخ عالمايك (تحت الموبايل) لحتى تفقع البالونة. الأسرع بيربح.',
     label: function (r) { return r.popped ? 'فقعها بـ ' + sec(r.ms) + 'ث' : 'وصّلها لـ ' + Math.round(r.size) + '%'; },
-    score: function (r) { return r.popped ? 100000 - r.ms : r.size * 100; },
+    score: function (r) { return r.popped ? 100000 - Math.round(r.ms / 100) * 100 : Math.round(r.size); },
     bot: function () { return R() < 0.7 ? { popped: true, ms: rand(2400, 9000) } : { popped: false, size: rand(40, 96) }; },
     start: function (api) {
       var b = api.body;
@@ -99,8 +126,8 @@
         '<div class="g-big" id="blp">0%</div><div class="g-sub" id="blh">' + (api.mic ? 'انفخ عالمايك! 💨' : 'اكبس بسرعة لتنفخ') + '</div>' +
         (api.mic ? '' : '<button class="g-pad g-pump" id="pump">💨 اكبس</button>') + '</div>';
       var bl = b.querySelector('#bl'), pct = b.querySelector('#blp');
-      var size = 0, t0 = api.now(), last = t0, base = 0.02, calib = [], over = false;
-      var thr = 0.12;
+      var size = 0, t0 = api.now(), last = t0, over = false;
+      if (api.mic) b.querySelector('.g-center').insertAdjacentHTML('beforeend', micMeter());
       if (!api.mic) {
         b.querySelector('#pump').addEventListener('pointerdown', function (e) { e.preventDefault(); size += 3.2; beep(300 + size * 5, 0.05, 'triangle', 0.03); buzz(10); });
       }
@@ -121,11 +148,7 @@
       api.loop(function () {
         if (over) return false;
         var t = api.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
-        if (api.mic) {
-          var lv = api.mic.level();
-          if (t - t0 < 350) { calib.push(lv); base = calib.reduce(function (a, v) { return a + v; }, 0) / calib.length; thr = Math.max(0.1, base * 4); }
-          else if (lv > thr) size += Math.min(38, (lv - thr) * 130) * dt;
-        }
+        if (api.mic) { var bw = api.mic.blow(); paintMeter(b, bw); if (bw > 0) size += (9 + bw * 24) * dt; }
         size = Math.max(0, size - 2.2 * dt);
         if (size >= 100) { size = 100; draw(); pop(); return false; }
         draw();
@@ -137,23 +160,26 @@
     name: 'طفّي الشمع', emoji: '🕯️', dur: 15, needs: 'mic', color: '#FFC21A',
     hint: 'انفخ عالمايك وطفّي الـ8 شمعات... وانتبه، في شمعات بترجع تولع!',
     label: function (r) { return r.all ? 'طفّاهم بـ ' + sec(r.ms) + 'ث' : 'طفّى ' + r.out + ' من 8'; },
-    score: function (r) { return r.all ? 100000 - r.ms : r.out * 1000; },
+    score: function (r) { return r.all ? 100000 - Math.round(r.ms / 100) * 100 : r.out * 1000; },
     bot: function () { return R() < 0.6 ? { all: true, ms: rand(3500, 12000) } : { all: false, out: ri(3, 7) }; },
     start: function (api) {
       var b = api.body, N = 8;
       var html = '<div class="g-center"><div class="cd-row" id="cd">';
       for (var i = 0; i < N; i++) html += '<div class="cd" data-i="' + i + '"><span class="cd-fl">🔥</span><span class="cd-body"></span></div>';
-      html += '</div><div class="g-big" id="cdn">0 / 8</div><div class="g-sub">' + (api.mic ? 'انفخ عالمايك! 💨' : 'اضغط ضل ماسك عالزر لتنفخ') + '</div>' +
-        (api.mic ? '' : '<button class="g-pad g-pump" id="hold">💨 انفخ (ضل ماسك)</button>') + '</div>';
+      html += '</div><div class="g-big" id="cdn">0 / 8</div><div class="g-sub">' + (api.mic ? 'انفخ عالمايك! 💨' : 'اسحب بإصبعك لفوق على الشمعة لتطفيها ☝️') + '</div>' +
+        (api.mic ? micMeter() : '') + '</div>';
       b.innerHTML = html;
       var nodes = b.querySelectorAll('.cd'), cnt = b.querySelector('#cdn');
       var lit = [], hp = 1, holding = false, over = false, t0 = api.now(), last = t0, nextRelight = t0 + rand(1600, 2600);
       var base = 0.02, calib = [], thr = 0.12;
       for (i = 0; i < N; i++) lit.push(true);
+      var swipeHit = 0;
       if (!api.mic) {
-        var hb = b.querySelector('#hold');
-        hb.addEventListener('pointerdown', function (e) { e.preventDefault(); holding = true; });
-        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) { hb.addEventListener(ev, function () { holding = false; }); });
+        var row = b.querySelector('#cd'), sy = null;
+        row.style.touchAction = 'none';
+        row.addEventListener('pointerdown', function (e) { e.preventDefault(); sy = e.clientY; });
+        row.addEventListener('pointermove', function (e) { if (sy == null) return; if (sy - e.clientY > 40) { swipeHit += 0.55; sy = e.clientY; buzz(8); } });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { row.addEventListener(ev, function () { sy = null; }); });
       }
       function outCount() { return lit.filter(function (x) { return !x; }).length; }
       function render() {
@@ -177,15 +203,10 @@
       api.loop(function () {
         if (over) return false;
         var t = api.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
-        var blowing = false;
-        if (api.mic) {
-          var lv = api.mic.level();
-          if (t - t0 < 350) { calib.push(lv); base = calib.reduce(function (a, v) { return a + v; }, 0) / calib.length; thr = Math.max(0.1, base * 4); }
-          else blowing = lv > thr;
-        } else blowing = holding;
         var act = lit.indexOf(true);
         if (act < 0) { done(true); return false; }
-        if (blowing) hp -= (api.mic ? 4 : 3) * dt; else hp = Math.min(1, hp + 1.5 * dt);
+        if (api.mic) { var bw = api.mic.blow(); paintMeter(b, bw); if (bw > 0) hp -= (1.8 + bw * 3.2) * dt; else hp = Math.min(1, hp + 1.2 * dt); }
+        else { hp -= swipeHit; swipeHit = 0; hp = Math.min(1, hp + 0.25 * dt); }
         if (hp <= 0) { lit[act] = false; hp = 1; beep(200, 0.08, 'triangle', 0.04); buzz(15); if (lit.indexOf(true) < 0) { render(); done(true); return false; } }
         if (t > nextRelight) {
           nextRelight = t + rand(1600, 2600);
@@ -227,7 +248,7 @@
     name: 'المتاهة', emoji: '🔮', dur: 30, needs: 'tilt', color: '#8A5CFF',
     hint: 'ميّل الموبايل ودحرج الكرة للحفرة. ما في حركة؟ اضغط بإصبعك بالمكان اللي بدك الكرة تروحلو.',
     label: function (r) { return r.reached ? 'وصل بـ ' + sec(r.ms) + 'ث' : 'قرّب ' + Math.round(r.prog) + '%'; },
-    score: function (r) { return r.reached ? 100000 - r.ms : r.prog * 5; },
+    score: function (r) { return r.reached ? 100000 - Math.round(r.ms / 100) * 100 : Math.round(r.prog); },
     bot: function () { return R() < 0.55 ? { reached: true, ms: rand(7000, 26000) } : { reached: false, prog: rand(30, 90) }; },
     start: function (api) {
       var W = 320, H = 440, R = 11;
@@ -295,7 +316,7 @@
     name: '10 ثواني بالضبط', emoji: '⏱️', dur: 14, needs: '', color: '#2F6BFF',
     hint: 'العداد بيختفي بعد 3 ثواني. اكبس لما تحس إنو وصلنا 10 بالضبط.',
     label: function (r) { if (r.none) return 'ما كبس'; var a = Math.abs(r.err); if (a < 0.01) return 'بالضبط! 🎯'; return (r.err < 0 ? 'بكّر ' : 'تأخّر ') + a.toFixed(2) + 'ث'; },
-    score: function (r) { return r.none ? -20000 : -Math.round(Math.abs(r.err) * 1000); },
+    score: function (r) { return r.none ? -20000 : -Math.round(Math.abs(r.err) * 100) * 10; },
     bot: function () { var e = rand(-1.3, 1.3) * R(); return { err: e }; },
     start: function (api) {
       api.body.innerHTML = '<div class="g-center"><div class="tn-clock" id="tn">0.00</div><div class="g-sub" id="tnh">العداد شغّال...</div><button class="g-pad g-tap tn-btn" id="tb">اكبس عـ10 ⏱️</button></div>';
@@ -321,7 +342,7 @@
     name: 'الضو الأخضر', emoji: '🚦', dur: 15, needs: '', color: '#22C17A',
     hint: 'الشاشة بتتلوّن. اكبس بس لما تصير خضرا 🟩. أي لون تاني بينقّصلك.',
     label: function (r) { return r.hits + ' صح · ' + r.wrong + ' غلط'; },
-    score: function (r) { return r.hits * 1000 - r.wrong * 1200 - Math.round((r.rt || 600) / 10); },
+    score: function (r) { return r.hits * 1000 - r.wrong * 1200; },
     bot: function () { return { hits: ri(3, 9), wrong: ri(0, 3), rt: rand(280, 600) }; },
     start: function (api) {
       var cols = [{ c: '#22C17A', g: 1 }, { c: '#FF4B3E' }, { c: '#2F6BFF' }, { c: '#FFC21A' }, { c: '#FF7EC0' }];
@@ -462,7 +483,7 @@
     name: 'الألوان الكذابة', emoji: '🎨', dur: 15, needs: '', color: '#E0336F',
     hint: 'بتطلع كلمة لون مكتوبة بلون تاني. اختار لون الخط، مو الكلمة!',
     label: function (r) { return r.c + ' صح · ' + r.w + ' غلط'; },
-    score: function (r) { return (r.c - r.w) * 1000 + r.c; },
+    score: function (r) { return r.c * 1000 - r.w * 1200; },
     bot: function () { return { c: ri(8, 18), w: ri(0, 4) }; },
     start: function (api) {
       var C = [{ n: 'أحمر', c: '#FF3B30' }, { n: 'أزرق', c: '#2F6BFF' }, { n: 'أخضر', c: '#1FB86B' }, { n: 'أصفر', c: '#F5B800' }];
@@ -686,7 +707,7 @@
 
     body.innerHTML = '<div class="g-center g-ready"><div class="g-ready-e">' + g.emoji + '</div><div class="g-hint">' + g.hint + '</div>' +
       (g.needs === 'mic' ? '<div class="g-note">🎤 رح نطلب إذن المايك</div>' : g.needs === 'tilt' ? '<div class="g-note">📱 رح نطلب إذن حساس الحركة</div>' : '') +
-      '<button class="btn btn-go" id="go">جاهز ✋</button><div class="g-wait" id="gw"></div><div id="gh"></div></div>';
+      '<button class="btn btn-go" id="go">جاهز ✋</button><div id="gmic"></div><div class="g-wait" id="gw"></div><div id="gh"></div></div>';
     var info = '', toolsHtml = '';
     function paintWait() {
       var gw = body.querySelector('#gw'), gh = body.querySelector('#gh');
@@ -704,9 +725,22 @@
         b.textContent = 'جاهز ✔';
         b.classList.add('is-ready');
         if (opts.onReady) opts.onReady();
+        if (g.needs === 'mic') micTest();
       });
     });
 
+    function micTest() {
+      var box = body.querySelector('#gmic'); if (!box) return;
+      if (!mic) { box.innerHTML = '<div class="g-note">🎤 ما قدرنا نوصل للمايك، رح تلعب باللمس</div>'; return; }
+      box.innerHTML = '<div class="mic-test"><b id="mtt">جرّب انفخ هلّق لنتأكد إنو عم نسمعك 💨</b>' + micMeter() + '</div>';
+      var ok = false;
+      (function f() {
+        if (!live || started) return;
+        var bw = mic.blow(); paintMeter(box, bw);
+        if (bw > 0.25 && !ok) { ok = true; var t = box.querySelector('#mtt'); if (t) t.textContent = '✔ عم نسمعك، تمام!'; buzz(20); }
+        requestAnimationFrame(f);
+      })();
+    }
     function countdown() {
       if (started || !live) return;
       started = true;

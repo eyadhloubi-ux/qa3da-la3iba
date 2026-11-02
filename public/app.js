@@ -184,7 +184,7 @@
     if (!engine || (role !== 'host' && !demo)) return;
     engine.tick();
     var s = engine.s;
-    if (s.phase === 'pick' && s.cur && s.cur.spin && Date.now() > s.cur.spin.at + s.cur.spin.dur + 900) engine.act(ME, { a: 'spinDone' });
+    if (s.phase === 'pick' && s.cur && s.cur.spin && s.cur.spin.at && T() > s.cur.spin.at + s.cur.spin.dur + 900) engine.act(ME, { a: 'spinDone' });
     if (s.phase === 'play') renderDeadline();
   }, 400);
   setInterval(function () { if (S && S.phase === 'play') renderDeadline(); }, 1000);
@@ -242,7 +242,7 @@
     var code = (room && room.code && V.screen === 'room' && !demo) ? '<span class="code-chip num">' + esc(room.code) + '</span>' : (demo && V.screen === 'room' ? '<span class="code-chip">تجربة</span>' : '');
     return '<div class="topline" aria-hidden="true"></div><div class="topbar">' +
       '<div class="brand"><b>لعّيبة</b>' + code + '</div>' +
-      '<div class="btn-row" style="flex:0 0 auto;gap:8px">' + (V.screen === 'room' && S && isHost() && S.phase !== 'setup' ? '<button class="icon-btn" data-a="players" aria-label="اللاعبين">👥</button>' : '') + '<button class="icon-btn" data-a="theme" aria-label="الوضع الفاتح والداكن">◐</button><button class="icon-btn" data-a="help" aria-label="كيف منلعب؟">؟</button></div></div>';
+      '<div class="btn-row" style="flex:0 0 auto;gap:8px">' + (V.screen === 'room' && room ? '<button class="icon-btn" data-a="roomMenu" aria-label="قعدة جديدة أو اطلع">🏠</button>' : '') + (V.screen === 'room' && S && isHost() && S.phase !== 'setup' ? '<button class="icon-btn" data-a="players" aria-label="اللاعبين">👥</button>' : '') + '<button class="icon-btn" data-a="theme" aria-label="الوضع الفاتح والداكن">◐</button><button class="icon-btn" data-a="help" aria-label="كيف منلعب؟">؟</button></div></div>';
   }
 
   function keepFocus(fn) {
@@ -410,7 +410,8 @@
     var sp = S.cur.spin;
     var h = '<div class="center">' + roundTag() + '</div>';
     if (S.cfg.order === 'wheel') {
-      h += '<h2 class="center">عجلة الحظ عم تدور 🎡</h2><div class="wheel-box"><div class="wheel-pin"></div>' + wheelSVG(sp.list) + '</div>';
+      h += '<h2 class="center">' + (sp.at ? 'عجلة الحظ عم تدور 🎡' : 'مين اللعبة الجاية؟ 🎡') + '</h2><div class="wheel-box"><div class="wheel-pin"></div>' + wheelSVG(sp.list) + '</div>';
+      if (!sp.at) h += isHost() ? '<button class="btn red wide" data-a="spin">دوّر العجلة 🎡</button>' : '<div class="card center"><b class="dots-anim">الريس رح يدوّر العجلة</b></div>';
     } else {
       h += '<h2 class="center">شو اللعبة الجاية؟ 🎲</h2><div class="slot" id="slot">' + GM[sp.list[0]].emoji + ' ' + GM[sp.list[0]].name + '</div>';
     }
@@ -437,27 +438,25 @@
   function animatePick() {
     if (!S || S.phase !== 'pick' || !S.cur || !S.cur.spin) return;
     var sp = S.cur.spin, n = sp.list.length;
-    if (!V.spinSeen[sp.id]) V.spinSeen[sp.id] = performance.now();
-    var t0 = V.spinSeen[sp.id], dur = sp.dur;
+    if (!sp.at && S.cfg.order === 'wheel') return;
+    var t0 = sp.at || T(), dur = sp.dur;
     if (S.cfg.order === 'wheel') {
       var g = document.getElementById('wrot'); if (!g) return;
       var seg = 360 / n, final = 360 * 5 + (360 - (sp.target * seg + seg / 2));
-      var done = performance.now() - t0;
       var ease = function (x) { return 1 - Math.pow(1 - x, 4); };
       (function frame() {
         var gg = document.getElementById('wrot'); if (!gg) return;
-        var x = Math.min(1, (performance.now() - t0) / dur);
+        var x = Math.max(0, Math.min(1, (T() - t0) / dur));
         gg.setAttribute('transform', 'rotate(' + (final * ease(x)).toFixed(2) + ' 160 160)');
         if (x < 1) requestAnimationFrame(frame);
         else if (!V.spinBuzz || V.spinBuzz !== sp.id) { V.spinBuzz = sp.id; try { navigator.vibrate && navigator.vibrate(60); } catch (e) { } }
       })();
-      void done;
     } else {
       (function tick() {
         var el = document.getElementById('slot'); if (!el) return;
-        var x = (performance.now() - t0) / dur;
+        var x = (T() - t0) / dur;
         if (x >= 1) { var gg = GM[sp.list[sp.target]]; el.textContent = gg.emoji + ' ' + gg.name; el.style.background = gg.color; el.style.color = 'var(--onc)'; return; }
-        var i = Math.floor((performance.now() - t0) / (60 + x * 200)) % n;
+        var i = Math.floor(Math.max(0, T() - t0) / (60 + Math.max(0, x) * 200)) % n;
         el.textContent = GM[sp.list[i]].emoji + ' ' + GM[sp.list[i]].name;
         setTimeout(tick, 50);
       })();
@@ -879,6 +878,7 @@
     renameTeam: function (v) { var t = teamById(v); inputSheet('اسم الفريق', t.name, function (val) { act({ a: 'renameTeam', team: v, name: val }); }); },
     player: function (v) { playerSheet(v); },
     players: function () { playersSheet(); },
+    roomMenu: function () { roomMenu(); },
     copyLink: function () { copy(shareLink()); },
     start: function () { act({ a: 'start' }); },
     pass: function () { act({ a: 'pass' }); },
@@ -887,6 +887,7 @@
     betAns: function (v) { act({ a: 'betAns', yes: v === '1' }); },
     openGame: function () { openGame(); },
     goNow: function () { act({ a: 'goNow' }); },
+    spin: function () { act({ a: 'spin' }); },
     replayAsk: function () { confirmSheet('نعيد ' + GM[(S.cur || S.history[S.history.length - 1]).game].name + ' من أول؟ نتيجة هالجولة رح تنلغى.', 'عيدها 🔁', function () { act({ a: 'replay' }); }); },
     closeAsk: function () { confirmSheet('بدك تسكّر الجولة هلّق؟ اللي ما خلّص ما رح تنحسبلو نقاط.', 'سكّر الجولة', function () { act({ a: 'closeRound' }); }); },
     reveal: function () { act({ a: 'reveal' }); },
@@ -921,7 +922,7 @@
         }, 600);
       });
     },
-    home2: function () { LS.del('lb_room'); location.href = location.pathname; }
+    home2: function () { leaveToStart(); }
   };
 
   function copy(text) {
@@ -972,6 +973,20 @@
       var cp = s.querySelector('#ps-cap'); if (cp) cp.onclick = function () { act({ a: 'captain', pid: pid }); closeSheet(); };
       var hs = s.querySelector('#ps-host'); if (hs) hs.onclick = function () { closeSheet(); confirmSheet('بدك تسلّم الريسة لـ' + p.name + '؟ رح تصير لاعب عادي.', 'سلّمه', function () { act({ a: 'transfer', pid: pid }); }); };
       var kk = s.querySelector('#ps-kick'); if (kk) kk.onclick = function () { closeSheet(); confirmSheet('بدك تطلّع ' + p.name + '؟ ما رح يقدر يرجع.', 'طلّعه', function () { act({ a: 'kick', pid: pid }); }); };
+    });
+  }
+  function leaveToStart() { LS.del('lb_room'); try { history.replaceState(null, '', location.pathname); } catch (e) { } location.href = location.pathname; }
+  function roomMenu() {
+    var host = isHost(), h = sheetHead('القعدة 🏠');
+    if (host) {
+      h += '<button class="btn mint" id="rm-same">🔁 قعدة جديدة بنفس الناس</button><span class="muted" style="font-size:14px;margin-top:-6px">الكل بيضل جوّا، والنتيجة بتنمسح وبترجعوا لشاشة الانتظار.</span>' +
+        '<button class="btn" id="rm-new">🆕 قعدة جديدة بناس جداد</button><span class="muted" style="font-size:14px;margin-top:-6px">كود جديد، والكل بيفوت من أول.</span>';
+    }
+    h += '<button class="btn ghost" id="rm-out">🚪 اطلع وارجع عالبداية</button><span class="muted" style="font-size:14px;margin-top:-6px">' + (host ? 'إذا طلعت، بعد شوي حدا تاني بيقدر يصير الريس.' : 'بتطلع من هالقعدة وبتقدر تفتح قعدة جديدة أو تفوت بكود تاني.') + '</span>';
+    openSheet(h, function (sh) {
+      var a1 = sh.querySelector('#rm-same'); if (a1) a1.onclick = function () { closeSheet(); H.rematch(); };
+      var a2 = sh.querySelector('#rm-new'); if (a2) a2.onclick = function () { closeSheet(); H.freshRoom(); };
+      sh.querySelector('#rm-out').onclick = function () { closeSheet(); confirmSheet('أكيد بدك تطلع من القعدة؟', 'اطلع', leaveToStart); };
     });
   }
   function playersSheet() {
