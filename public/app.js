@@ -563,14 +563,14 @@
     V.playingKey = key;
     $stage.hidden = false;
     document.body.style.overflow = 'hidden';
-    V.ctrl = MiniGames.run(S.cur.game, $stage, function (score, label) {
+    V.ctrl = MiniGames.run(S.cur.game, $stage, function (score, label, t) {
       V.myScores[key] = { score: score, label: label };
-      act({ a: 'score', score: score, label: label });
+      act({ a: 'score', score: score, label: label, t: t });
       setTimeout(closeGame, 1600);
     }, {
       seed: S.cur.seed,
       onReady: function () { act({ a: 'ready' }); },
-      onPartial: function (sc, lb) { act({ a: 'partial', score: sc, label: lb }); },
+      onPartial: function (sc, lb, t) { act({ a: 'partial', score: sc, label: lb, t: t }); },
       onHostTool: function (a) { if (a === 'goNow') act({ a: 'goNow' }); }
     });
     var x = document.createElement('button');
@@ -1081,6 +1081,7 @@
   function cropSheet(src, target) {
     var rect = target === 'group';
     openSheet(sheetHead(rect ? 'ظبّط صورة الشلة' : 'ظبّط صورتك') + '<div class="crop-box ' + (rect ? 'rect' : '') + '" id="cb"><img id="ci" alt=""></div>' +
+      '<div class="btn-row"><button class="btn sm ghost" id="crot">🔄 لفّ الصورة</button>' + (rect ? '<button class="btn sm ghost" id="cori">▯ خليها بالطول</button>' : '') + '</div>' +
       '<label class="label" for="cz">كبّر وصغّر، واسحب الصورة بإصبعك</label><input type="range" class="range" id="cz" min="1" max="4" step="0.01" value="1">' +
       '<button class="btn red" id="cok">تمام ✔</button>', function (s) {
         var box = s.querySelector('#cb'), img = s.querySelector('#ci'), z = s.querySelector('#cz');
@@ -1091,6 +1092,23 @@
           x = (bw - img.naturalWidth * base) / 2; y = (bh - img.naturalHeight * base) / 2; apply();
         };
         img.src = src;
+        function fit() {
+          bw = box.clientWidth; bh = box.clientHeight; zoom = 1; z.value = 1;
+          base = Math.max(bw / img.naturalWidth, bh / img.naturalHeight);
+          x = (bw - img.naturalWidth * base) / 2; y = (bh - img.naturalHeight * base) / 2; apply();
+        }
+        s.querySelector('#crot').onclick = function () {
+          var c = document.createElement('canvas'), w = img.naturalWidth, h = img.naturalHeight, mx = 1600, k = Math.min(1, mx / Math.max(w, h));
+          c.width = Math.round(h * k); c.height = Math.round(w * k);
+          var g = c.getContext('2d'); g.translate(c.width, 0); g.rotate(Math.PI / 2); g.drawImage(img, 0, 0, w * k, h * k);
+          img.src = c.toDataURL('image/jpeg', 0.92);
+        };
+        var ori = s.querySelector('#cori');
+        if (ori) ori.onclick = function () {
+          box.classList.toggle('tall');
+          ori.textContent = box.classList.contains('tall') ? '▭ خليها بالعرض' : '▯ خليها بالطول';
+          fit();
+        };
         function sc() { return base * zoom; }
         function clampXY() {
           var w = img.naturalWidth * sc(), h = img.naturalHeight * sc();
@@ -1117,7 +1135,7 @@
         function up(e) { delete pts[e.pointerId]; pinch = null; var ids = Object.keys(pts); drag = ids.length ? pts[ids[0]] : null; }
         box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
         s.querySelector('#cok').onclick = function () {
-          var ow = rect ? 720 : 280, oh = rect ? 540 : 280, c = document.createElement('canvas'); c.width = ow; c.height = oh;
+          var tall = box.classList.contains('tall'), ow = rect ? (tall ? 540 : 720) : 280, oh = rect ? (tall ? 720 : 540) : 280, c = document.createElement('canvas'); c.width = ow; c.height = oh;
           var k = ow / bw, cx = c.getContext('2d');
           cx.drawImage(img, x * k, y * k, img.naturalWidth * sc() * k, img.naturalHeight * sc() * k);
           var url = c.toDataURL('image/jpeg', rect ? 0.78 : 0.8);

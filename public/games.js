@@ -340,42 +340,57 @@
     }
   };
 
-  G.green = {
-    name: 'الضو الأخضر', emoji: '🚦', dur: 15, needs: '', color: '#22C17A',
-    hint: 'الشاشة بتتلوّن. اكبس بس لما تصير خضرا 🟩. أي لون تاني بينقّصلك.',
-    label: function (r) { return r.hits + ' صح · ' + r.wrong + ' غلط'; },
-    score: function (r) { return r.hits * 1000 - r.wrong * 1200; },
-    bot: function () { return { hits: ri(3, 9), wrong: ri(0, 3), rt: rand(280, 600) }; },
+  G.draw = {
+    name: 'مبارزة الكاوبوي', emoji: '🤠', dur: 30, needs: '', color: '#E0A33A',
+    hint: '5 مبارزات. استنى لحتى تطلع «ارمي!» وبعدين اكبس بأسرع ما فيك. إذا كبست بكّير بتنحسبلك خسارة بالمبارزة.',
+    label: function (r) { return 'ردّة فعلك ' + (r.avg / 1000).toFixed(2) + 'ث' + (r.early ? ' · ' + r.early + ' بكّير' : ''); },
+    score: function (r) { return -Math.round(r.avg / 10) * 10; },
+    bot: function () { return { avg: rand(260, 520), early: R() < 0.3 ? 1 : 0 }; },
     start: function (api) {
-      var cols = [{ c: '#22C17A', g: 1 }, { c: '#FF4B3E' }, { c: '#2F6BFF' }, { c: '#FFC21A' }, { c: '#FF7EC0' }];
-      api.body.innerHTML = '<div class="gr-field" id="gf"><div class="gr-msg" id="gm"></div></div><div class="g-row"><span id="gh">✔ 0</span><span id="gw">✖ 0</span></div>';
-      var gf = api.body.querySelector('#gf'), gm = api.body.querySelector('#gm');
-      var hits = 0, wrong = 0, rts = [], cur = null, shownAt = 0, tapped = false, over = false, nextAt = api.now() + 500, lastWasGreen = false;
-      function show() {
-        var isG = !lastWasGreen && R() < 0.36;
-        cur = isG ? cols[0] : cols[ri(1, cols.length - 1)];
-        lastWasGreen = isG;
-        gf.style.background = cur.c; gm.textContent = '';
-        shownAt = api.now(); tapped = false;
-        nextAt = shownAt + rand(550, 900);
+      var N = 5, PEN = 1000, k = 0, times = [], early = 0, state = 'wait', goAt = 0, over = false, tmr = 0;
+      api.body.innerHTML = '<div class="dw-field" id="df"><div class="dw-sky"></div><div class="dw-sun"></div>' +
+        '<div class="dw-tw" aria-hidden="true">🌵</div><div class="dw-p dw-me">🤠</div><div class="dw-p dw-foe">🤖</div>' +
+        '<div class="dw-msg" id="dm">استعد...</div></div><div class="g-row"><span id="dk">مبارزة 1 من 5</span><span id="dt">—</span></div>';
+      var df = api.body.querySelector('#df'), dm = api.body.querySelector('#dm');
+      var fakes = ['🐦', '🌵', '🍂', '🐍'];
+      function avg() { return times.length ? times.reduce(function (a, v) { return a + v; }, 0) / times.length : 9999; }
+      function upd() {
+        api.body.querySelector('#dk').textContent = 'مبارزة ' + Math.min(k + 1, N) + ' من ' + N;
+        api.body.querySelector('#dt').textContent = times.length ? (avg() / 1000).toFixed(2) + 'ث' : '—';
+        if (times.length) api.part('draw', { avg: avg() + (N - times.length) * PEN, early: early });
       }
-      function blank() { cur = null; gf.style.background = ''; gm.textContent = ''; nextAt = api.now() + 130; }
-      gf.addEventListener('pointerdown', function (e) {
+      function round() {
+        if (over) return;
+        if (k >= N) return end();
+        state = 'wait'; df.className = 'dw-field'; dm.textContent = 'استعد...';
+        var wait = rand(1300, 3200), fake = R() < 0.45 ? rand(500, wait - 400) : 0;
+        if (fake > 0) setTimeout(function () { if (state === 'wait' && !over) { dm.textContent = fakes[ri(0, fakes.length - 1)]; df.classList.add('dw-fake'); setTimeout(function () { if (state === 'wait') { df.classList.remove('dw-fake'); dm.textContent = 'استعد...'; } }, 380); } }, fake);
+        tmr = setTimeout(function () {
+          if (over || state !== 'wait') return;
+          state = 'go'; goAt = api.now(); df.classList.add('dw-go'); dm.textContent = 'ارمي! 💥'; beep(1200, 0.08, 'square', 0.07); buzz(30);
+          tmr = setTimeout(function () { if (state === 'go') { times.push(1500); state = 'done'; dm.textContent = 'تأخّرت 🐢'; k++; upd(); setTimeout(round, 900); } }, 1500);
+        }, wait);
+      }
+      df.addEventListener('pointerdown', function (e) {
         e.preventDefault(); if (over) return;
-        if (cur && cur.g && !tapped) { tapped = true; hits++; rts.push(api.now() - shownAt); beep(880, 0.06, 'square', 0.04); gm.textContent = '✔'; buzz(10); }
-        else { wrong++; beep(140, 0.12, 'sawtooth', 0.06); buzz(60); gf.classList.remove('shake'); void gf.offsetWidth; gf.classList.add('shake'); }
-        api.body.querySelector('#gh').textContent = '✔ ' + hits; api.body.querySelector('#gw').textContent = '✖ ' + wrong;
-        api.part('green', { hits: hits, wrong: wrong });
+        if (state === 'wait') {
+          clearTimeout(tmr); state = 'done'; early++; times.push(PEN); k++;
+          df.className = 'dw-field dw-bad'; dm.textContent = 'بكّير! 💢'; beep(140, 0.15, 'sawtooth', 0.07); buzz(80);
+          upd(); setTimeout(round, 1000);
+        } else if (state === 'go') {
+          clearTimeout(tmr); state = 'done'; var rt = api.now() - goAt; times.push(rt); k++;
+          df.className = 'dw-field dw-win'; dm.textContent = (rt / 1000).toFixed(2) + 'ث 🎯'; beep(700, 0.1, 'triangle', 0.07);
+          upd(); setTimeout(round, 1000);
+        }
       });
-      api.timer(15, function () {
-        over = true;
-        var r = { hits: hits, wrong: wrong, rt: rts.length ? rts.reduce(function (a, v) { return a + v; }, 0) / rts.length : 900 };
-        api.finish(G.green.score(r), G.green.label(r));
-      });
-      api.loop(function () {
-        if (over) return false;
-        if (api.now() >= nextAt) { if (cur) blank(); else show(); }
-      });
+      function end() {
+        if (over) return; over = true; clearTimeout(tmr);
+        while (times.length < N) times.push(PEN);
+        var r = { avg: avg(), early: early };
+        api.finish(G.draw.score(r), G.draw.label(r));
+      }
+      api.timer(30, end);
+      setTimeout(round, 400);
     }
   };
 
@@ -659,7 +674,7 @@
   function run(id, host, onDone, opts) {
     opts = opts || {};
     var g = G[id]; if (!g) return { begin: function () { }, info: function () { }, stop: function () { } };
-    var lastPart = null, partAt = 0, partT = 0;
+    var lastPart = null, partAt = 0, partT = 0, gameT0 = 0, progT = 0;
     var live = true, timers = [], raf = 0, mic = null, tilt = null, finished = false, prepared = null, started = false, beginAt = 0, nowFn = null;
     host.innerHTML = '';
     var wrap = el('div', 'g-wrap');
@@ -679,21 +694,25 @@
       body: body,
       now: function () { return performance.now(); },
       mic: null, tilt: null,
+      // كل تقدّم بالنتيجة: بيتسجّل وقتو (للتعادل: اللي وصل أول بيربح) وبينبعت كنتيجة جزئية
       part: function (id, r) {
-        if (finished || !opts.onPartial) return;
+        if (finished) return;
         var sc = G[id].score(r), lb = G[id].label(r);
         if (lastPart && lastPart[0] === sc) return;
-        lastPart = [sc, lb];
+        progT = Math.round((performance.now() - gameT0) / 10) * 10;
+        lastPart = [sc, lb, progT];
+        if (!opts.onPartial) return;
         var t = performance.now();
-        if (t - partAt > 700) { partAt = t; opts.onPartial(sc, lb); }
-        else if (!partT) partT = setTimeout(function () { partT = 0; partAt = performance.now(); if (!finished && lastPart) opts.onPartial(lastPart[0], lastPart[1]); }, 750);
+        if (t - partAt > 700) { partAt = t; opts.onPartial(sc, lb, progT); }
+        else if (!partT) partT = setTimeout(function () { partT = 0; partAt = performance.now(); if (!finished && lastPart) opts.onPartial(lastPart[0], lastPart[1], lastPart[2]); }, 750);
       },
       finish: function (score, label) {
         if (finished) return; finished = true;
+        var ft = lastPart && lastPart[0] === score ? lastPart[2] : Math.round((performance.now() - gameT0) / 10) * 10;
         cleanup();
         body.innerHTML = '<div class="g-center g-done"><div class="g-done-e">' + g.emoji + '</div><div class="g-big">' + label + '</div><div class="g-sub">انبعتت نتيجتك ✔</div></div>';
         beep(523, 0.1, 'triangle', 0.06); setTimeout(function () { beep(784, 0.15, 'triangle', 0.06); }, 110);
-        onDone(score, label);
+        onDone(score, label, ft);
       },
       timer: function (sx, cb, hidden) {
         var t0 = performance.now(), gt = head.querySelector('#gt'), gb = bar.querySelector('#gbar');
@@ -761,7 +780,7 @@
       started = true;
       body.innerHTML = '<div class="g-center"><div class="g-sub">كلكن مع بعض!</div><div class="g-count" id="gc">3</div></div>';
       var gc = body.querySelector('#gc'), last = null;
-      var go = function () { if (!live) return; beep(880, 0.2, 'square', 0.06); body.innerHTML = ''; R = opts.seed ? mulberry(opts.seed) : Math.random; g.start(api); };
+      var go = function () { if (!live) return; beep(880, 0.2, 'square', 0.06); body.innerHTML = ''; R = opts.seed ? mulberry(opts.seed) : Math.random; gameT0 = performance.now(); g.start(api); };
       var startIt = function () {
         var ready = prepared || (g.needs === 'tilt' ? Promise.resolve() : prep());
         ready.then(function () {

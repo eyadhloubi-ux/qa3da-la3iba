@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
 
-  var GAME_IDS = ['balloon', 'candles', 'maze', 'ten', 'green', 'fly', 'tap', 'circle', 'stroop', 'simon', 'dots', 'odd'];
+  var GAME_IDS = ['balloon', 'candles', 'maze', 'ten', 'draw', 'fly', 'tap', 'circle', 'stroop', 'simon', 'dots', 'odd'];
   var PLAYER_COLORS = ['#FF4B3E', '#2F6BFF', '#FFC21A', '#FF7EC0', '#22C17A', '#FF8A1F', '#8A5CFF', '#00B5C7',
     '#C2562B', '#7FA100', '#E0336F', '#4657C9', '#D49A00', '#1E9C77', '#A447BD', '#5E7C8C'];
   var TEAM_DEF = [
@@ -197,18 +197,21 @@
     for (var i = 0; i < c.playersIn.length; i++) if (!c.scores[c.playersIn[i]]) return false;
     return true;
   };
+  function tOf(t, fb) { t = Number(t); if (!isFinite(t) || t < 0) t = fb; return Math.max(0, Math.round((t || 0) / 10) * 10); }
+  function tv(r) { return r.t == null ? 1e12 : r.t; }
+  // الترتيب: النتيجة أولاً، وإذا تساوت، اللي وصلها أول بيسبق
   function rankRows(rows) {
     rows.sort(function (a, b) {
       if (a.score === null && b.score === null) return 0;
       if (a.score === null) return 1;
       if (b.score === null) return -1;
-      return b.score - a.score;
+      return (b.score - a.score) || (tv(a) - tv(b));
     });
-    var rank = 0, last;
+    var rank = 0, lastS, lastT;
     rows.forEach(function (r, i) {
       if (r.score === null) { r.rank = null; return; }
-      if (i === 0 || r.score !== last) rank = i + 1;
-      last = r.score;
+      if (i === 0 || r.score !== lastS || tv(r) !== lastT) rank = i + 1;
+      lastS = r.score; lastT = tv(r);
       r.rank = rank;
     });
     return rows;
@@ -217,30 +220,32 @@
     var s = this.s, c = s.cur, self = this;
     var playerRows = c.playersIn.map(function (id) {
       var sc = c.scores[id], pt = c.partial && c.partial[id];
-      if (!sc && pt) return { id: id, score: pt.score, label: pt.label + ' ⏹️' };
-      return { id: id, score: sc ? sc.score : null, label: sc ? sc.label : 'ما لعب' };
+      if (!sc && pt) return { id: id, score: pt.score, t: pt.t, label: pt.label + ' ⏹️' };
+      return { id: id, score: sc ? sc.score : null, t: sc ? sc.t : null, label: sc ? sc.label : 'ما لعب' };
     });
     rankRows(playerRows);
     var rows;
     if (s.cfg.mode === 'solo') {
-      rows = playerRows.map(function (r) { return { id: r.id, score: r.score, label: r.label, rank: r.rank, pts: r.rank ? (PTS[r.rank - 1] || 0) : 0 }; });
+      rows = playerRows.map(function (r) { return { id: r.id, score: r.score, t: r.t, label: r.label, rank: r.rank, pts: r.rank ? (PTS[r.rank - 1] || 0) : 0 }; });
     } else {
       rows = [];
       s.teams.forEach(function (t) {
         var mine = playerRows.filter(function (r) { return s.players[r.id] && s.players[r.id].team === t.id; });
         if (!mine.length) return;
         var vals = mine.filter(function (r) { return r.score !== null; });
-        var score = null, label = 'ما لعبوا';
+        var score = null, label = 'ما لعبوا', tAvg = null;
         if (vals.length) {
           if (s.cfg.teamStyle === 'all') {
-            score = vals.reduce(function (a, r) { return a + r.score; }, 0) / mine.length;
+            score = Math.round(vals.reduce(function (a, r) { return a + r.score; }, 0) / mine.length * 100) / 100;
+            var tt0 = vals.filter(function (r) { return r.t != null; });
+            tAvg = tt0.length ? Math.round(tt0.reduce(function (a, r) { return a + r.t; }, 0) / tt0.length / 10) * 10 : null;
             label = 'معدّل ' + vals.length + ' من ' + mine.length;
           } else {
             score = vals[0].score;
             label = vals[0].label;
           }
         }
-        rows.push({ id: t.id, score: score, label: label, players: mine.map(function (r) { return r.id; }) });
+        rows.push({ id: t.id, score: score, t: tAvg, label: label, players: mine.map(function (r) { return r.id; }) });
       });
       rankRows(rows);
       rows.forEach(function (r) { r.pts = r.rank ? (PTS[r.rank - 1] || 0) : 0; });
@@ -370,7 +375,7 @@
         if (s.phase !== 'play' || !c || !c.startAt || c.playersIn.indexOf(pid) < 0 || c.scores[pid]) return;
         var sc = Number(a.score);
         if (!isFinite(sc)) return;
-        c.scores[pid] = { score: Math.round(sc * 100) / 100, label: String(a.label || '').slice(0, 40), at: now() };
+        c.scores[pid] = { score: Math.round(sc * 100) / 100, label: String(a.label || '').slice(0, 40), at: now(), t: tOf(a.t, now() - c.startAt) };
         if (this.allIn()) { this.finishPlay(); return; }
         this.emit();
         return;
@@ -388,7 +393,7 @@
         if (s.phase !== 'play' || !cp || !cp.startAt || cp.playersIn.indexOf(pid) < 0 || cp.scores[pid]) return;
         var ps = Number(a.score); if (!isFinite(ps)) return;
         cp.partial = cp.partial || {};
-        cp.partial[pid] = { score: Math.round(ps * 100) / 100, label: String(a.label || '').slice(0, 40) };
+        cp.partial[pid] = { score: Math.round(ps * 100) / 100, label: String(a.label || '').slice(0, 40), t: tOf(a.t, now() - cp.startAt) };
         return; // ما في داعي نبعت الحالة للكل
       }
       case 'ready': {

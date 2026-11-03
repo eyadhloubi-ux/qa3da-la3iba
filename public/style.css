@@ -463,3 +463,26 @@ body, #stage, :root[data-skin] body, :root[data-skin] #stage { background-image:
 .mic-m b { flex: 1; height: 14px; border: 2px solid var(--line); border-radius: 999px; background: var(--soft); overflow: hidden; }
 .mic-f { display: block; height: 100%; width: 0; background: var(--mint); transition: width .08s linear; }
 .mic-test { display: flex; flex-direction: column; gap: 8px; align-items: center; font-size: 15px; }
+
+/* ---------- مبارزة الكاوبوي ---------- */
+.dw-field { flex: 1; position: relative; overflow: hidden; border: 4px solid var(--line); border-radius: 26px; min-height: 320px; box-shadow: 5px 5px 0 var(--shadow); background: #F6C774; touch-action: none; cursor: pointer; transition: background .08s; }
+.dw-sky { position: absolute; inset: 0 0 38% 0; background: linear-gradient(#FFB56B, #FFD99A); }
+.dw-sun { position: absolute; width: 90px; height: 90px; border-radius: 50%; background: #FFF1B8; left: 50%; top: 18%; transform: translateX(-50%); box-shadow: 0 0 40px #FFE48A; }
+.dw-field::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: repeating-linear-gradient(90deg, #D9984A 0 30px, #D08F42 30px 60px); border-top: 4px solid var(--line); }
+.dw-p { position: absolute; bottom: 30%; font-size: 64px; z-index: 2; transition: transform .1s; }
+.dw-me { right: 10%; transform: scaleX(-1); }
+.dw-foe { left: 10%; }
+.dw-tw { position: absolute; bottom: 33%; font-size: 30px; z-index: 1; animation: tumble 6s linear infinite; }
+@keyframes tumble { from { left: -10%; transform: rotate(0); } to { left: 110%; transform: rotate(720deg); } }
+.dw-msg { position: absolute; z-index: 3; top: 8%; left: 0; right: 0; text-align: center; font-family: var(--fd); font-size: 40px; color: #3A2410; }
+.dw-go { background: #FF4B3E; }
+.dw-go .dw-sky { background: linear-gradient(#FF4B3E, #FF8A5C); }
+.dw-go .dw-msg { color: #fff; font-size: 52px; text-shadow: 3px 3px 0 #16211B; }
+.dw-go .dw-me { transform: scaleX(-1) scale(1.15); }
+.dw-fake .dw-msg { font-size: 70px; }
+.dw-win .dw-foe { transform: rotate(90deg) translateY(20px); opacity: .6; }
+.dw-win .dw-msg { color: #1E6B3A; }
+.dw-bad .dw-me { transform: scaleX(-1) rotate(-90deg) translateY(20px); opacity: .6; }
+.dw-bad .dw-msg { color: #B3261E; }
+
+.crop-box.rect.tall { aspect-ratio: 3/4; width: min(64vw, 270px); }

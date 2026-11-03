@@ -67,7 +67,7 @@ function saveStats() {
 function bump(obj, k, n) { obj[k] = (obj[k] || 0) + (n || 1); }
 function today() { return new Date().toISOString().slice(0, 10); }
 
-const GAME_NAMES = { balloon: 'نفّخ البالونة', candles: 'طفّي الشمع', maze: 'المتاهة', ten: '10 ثواني بالضبط', green: 'الضو الأخضر', fly: 'اصطاد الدبّانة', tap: 'الطابع الأسرع', circle: 'الدائرة الكاملة', stroop: 'الألوان الكذابة', simon: 'احفظ الترتيب', dots: 'عدّ النقاط', odd: 'مين الغريب' };
+const GAME_NAMES = { balloon: 'نفّخ البالونة', candles: 'طفّي الشمع', maze: 'المتاهة', ten: '10 ثواني بالضبط', draw: 'مبارزة الكاوبوي', fly: 'اصطاد الدبّانة', tap: 'الطابع الأسرع', circle: 'الدائرة الكاملة', stroop: 'الألوان الكذابة', simon: 'احفظ الترتيب', dots: 'عدّ النقاط', odd: 'مين الغريب' };
 app.get('/stats', (req, res) => {
   if (req.query.key !== STATS_KEY) return res.status(403).send('مفتاح الإحصائيات غير صحيح. أضف ?key= إلى الرابط.');
   if (req.query.format === 'json') return res.json(stats);
