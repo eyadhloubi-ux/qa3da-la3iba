@@ -118,7 +118,7 @@
     name: 'نفّخ البالونة', emoji: '🎈', dur: 15, needs: 'mic', color: '#FF4B3E',
     hint: 'انفخ عالمايك (تحت الموبايل) لحتى تفقع البالونة. الأسرع بيربح.',
     label: function (r) { return r.popped ? 'فقعها بـ ' + sec(r.ms) + 'ث' : 'وصّلها لـ ' + Math.round(r.size) + '%'; },
-    score: function (r) { return r.popped ? 100000 - Math.round(r.ms / 100) * 100 : Math.round(r.size); },
+    score: function (r) { return r.popped ? 100000 - Math.round(Number(sec(r.ms)) * 10) * 100 : Math.round(r.size); },
     bot: function () { return R() < 0.7 ? { popped: true, ms: rand(2400, 9000) } : { popped: false, size: rand(40, 96) }; },
     start: function (api) {
       var b = api.body;
@@ -150,6 +150,7 @@
         var t = api.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
         if (api.mic) { var bw = api.mic.blow(); paintMeter(b, bw); if (bw > 0) size += (9 + bw * 24) * dt; }
         size = Math.max(0, size - 2.2 * dt);
+        api.part('balloon', { popped: false, size: Math.min(99, size) });
         if (size >= 100) { size = 100; draw(); pop(); return false; }
         draw();
       });
@@ -160,7 +161,7 @@
     name: 'طفّي الشمع', emoji: '🕯️', dur: 15, needs: 'mic', color: '#FFC21A',
     hint: 'انفخ عالمايك وطفّي الـ8 شمعات... وانتبه، في شمعات بترجع تولع!',
     label: function (r) { return r.all ? 'طفّاهم بـ ' + sec(r.ms) + 'ث' : 'طفّى ' + r.out + ' من 8'; },
-    score: function (r) { return r.all ? 100000 - Math.round(r.ms / 100) * 100 : r.out * 1000; },
+    score: function (r) { return r.all ? 100000 - Math.round(Number(sec(r.ms)) * 10) * 100 : r.out * 1000; },
     bot: function () { return R() < 0.6 ? { all: true, ms: rand(3500, 12000) } : { all: false, out: ri(3, 7) }; },
     start: function (api) {
       var b = api.body, N = 8;
@@ -207,7 +208,7 @@
         if (act < 0) { done(true); return false; }
         if (api.mic) { var bw = api.mic.blow(); paintMeter(b, bw); if (bw > 0) hp -= (1.8 + bw * 3.2) * dt; else hp = Math.min(1, hp + 1.2 * dt); }
         else { hp -= swipeHit; swipeHit = 0; hp = Math.min(1, hp + 0.25 * dt); }
-        if (hp <= 0) { lit[act] = false; hp = 1; beep(200, 0.08, 'triangle', 0.04); buzz(15); if (lit.indexOf(true) < 0) { render(); done(true); return false; } }
+        if (hp <= 0) { lit[act] = false; hp = 1; api.part('candles', { all: false, out: outCount() }); beep(200, 0.08, 'triangle', 0.04); buzz(15); if (lit.indexOf(true) < 0) { render(); done(true); return false; } }
         if (t > nextRelight) {
           nextRelight = t + rand(1600, 2600);
           var outs = []; lit.forEach(function (x, k) { if (!x) outs.push(k); });
@@ -248,7 +249,7 @@
     name: 'المتاهة', emoji: '🔮', dur: 30, needs: 'tilt', color: '#8A5CFF',
     hint: 'ميّل الموبايل ودحرج الكرة للحفرة. ما في حركة؟ اضغط بإصبعك بالمكان اللي بدك الكرة تروحلو.',
     label: function (r) { return r.reached ? 'وصل بـ ' + sec(r.ms) + 'ث' : 'قرّب ' + Math.round(r.prog) + '%'; },
-    score: function (r) { return r.reached ? 100000 - Math.round(r.ms / 100) * 100 : Math.round(r.prog); },
+    score: function (r) { return r.reached ? 100000 - Math.round(Number(sec(r.ms)) * 10) * 100 : Math.round(r.prog); },
     bot: function () { return R() < 0.55 ? { reached: true, ms: rand(7000, 26000) } : { reached: false, prog: rand(30, 90) }; },
     start: function (api) {
       var W = 320, H = 440, R = 11;
@@ -307,6 +308,7 @@
         var nx = x + vx * dt; if (hit(nx, y)) { vx = -vx * 0.35; } else x = nx;
         var ny = y + vy * dt; if (hit(x, ny)) { vy = -vy * 0.35; } else y = ny;
         draw();
+        api.part('maze', { reached: false, prog: clamp((1 - Math.hypot(m.hole[0] - x, m.hole[1] - y) / startDist) * 100, 0, 99) });
         if (Math.hypot(m.hole[0] - x, m.hole[1] - y) < 13) { end(true); return false; }
       });
     }
@@ -315,7 +317,7 @@
   G.ten = {
     name: '10 ثواني بالضبط', emoji: '⏱️', dur: 14, needs: '', color: '#2F6BFF',
     hint: 'العداد بيختفي بعد 3 ثواني. اكبس لما تحس إنو وصلنا 10 بالضبط.',
-    label: function (r) { if (r.none) return 'ما كبس'; var a = Math.abs(r.err); if (a < 0.01) return 'بالضبط! 🎯'; return (r.err < 0 ? 'بكّر ' : 'تأخّر ') + a.toFixed(2) + 'ث'; },
+    label: function (r) { if (r.none) return 'ما كبس'; var a = Math.round(Math.abs(r.err) * 100) / 100; if (a === 0) return 'بالضبط! 🎯'; return (r.err < 0 ? 'بكّر ' : 'تأخّر ') + a.toFixed(2) + 'ث'; },
     score: function (r) { return r.none ? -20000 : -Math.round(Math.abs(r.err) * 100) * 10; },
     bot: function () { var e = rand(-1.3, 1.3) * R(); return { err: e }; },
     start: function (api) {
@@ -363,6 +365,7 @@
         if (cur && cur.g && !tapped) { tapped = true; hits++; rts.push(api.now() - shownAt); beep(880, 0.06, 'square', 0.04); gm.textContent = '✔'; buzz(10); }
         else { wrong++; beep(140, 0.12, 'sawtooth', 0.06); buzz(60); gf.classList.remove('shake'); void gf.offsetWidth; gf.classList.add('shake'); }
         api.body.querySelector('#gh').textContent = '✔ ' + hits; api.body.querySelector('#gw').textContent = '✖ ' + wrong;
+        api.part('green', { hits: hits, wrong: wrong });
       });
       api.timer(15, function () {
         over = true;
@@ -392,7 +395,7 @@
         e.preventDefault(); if (over) return;
         var r = ff.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
         if (Math.hypot(px - x, py - y) < 42) {
-          n++; sp += 28; beep(500 + n * 40, 0.07, 'square', 0.05); buzz(20);
+          n++; sp += 28; beep(500 + n * 40, 0.07, 'square', 0.05); buzz(20); api.part('fly', { n: n });
           var sp2 = el('div', 'fl-splat', '💥'); sp2.style.left = x + 'px'; sp2.style.top = y + 'px'; ff.appendChild(sp2); setTimeout(function () { sp2.remove(); }, 450);
           var side = ri(0, 3); x = side === 0 ? 10 : side === 1 ? W - 10 : rand(20, W - 20); y = side === 2 ? 10 : side === 3 ? H - 10 : rand(20, H - 20);
           target();
@@ -421,7 +424,7 @@
       api.body.innerHTML = '<div class="g-center"><div class="g-big tp-n" id="tn">0</div><button class="g-pad tp-btn" id="tb">اكبس!</button></div>';
       var n = 0, over = false, tn = api.body.querySelector('#tn'), btn = api.body.querySelector('#tb');
       btn.addEventListener('pointerdown', function (e) {
-        e.preventDefault(); if (over) return; n++; tn.textContent = n; if (n % 10 === 0) beep(400 + n * 4, 0.04, 'square', 0.03);
+        e.preventDefault(); if (over) return; n++; tn.textContent = n; api.part('tap', { n: n }); if (n % 10 === 0) beep(400 + n * 4, 0.04, 'square', 0.03);
         btn.classList.remove('bump'); void btn.offsetWidth; btn.classList.add('bump');
       });
       api.timer(10, function () { over = true; api.finish(G.tap.score({ n: n }), G.tap.label({ n: n })); });
@@ -432,7 +435,7 @@
     name: 'الدائرة الكاملة', emoji: '⭕', dur: 15, needs: '', color: '#FF8A1F',
     hint: 'ارسم دائرة بإصبعك قد ما فيك كاملة. معك 15 ثانية وبتنحسب أحسن محاولة.',
     label: function (r) { return r.best.toFixed(1) + '%'; },
-    score: function (r) { return Math.round(r.best * 10); },
+    score: function (r) { return Math.round(Number(r.best.toFixed(1)) * 10); },
     bot: function () { return { best: rand(68, 97) }; },
     start: function (api) {
       var S = 320;
@@ -469,7 +472,7 @@
       function up() {
         if (!drawing) return; drawing = false;
         var q = evalc();
-        if (q > best) best = q;
+        if (q > best) { best = q; api.part('circle', { best: best }); }
         api.body.querySelector('#cl').textContent = q ? q.toFixed(1) + '%' : 'كمّلها دائرة 😅';
         api.body.querySelector('#cb').textContent = 'أحسن: ' + (best ? best.toFixed(1) + '%' : '—');
         if (q > 0) beep(300 + q * 6, 0.1, 'triangle', 0.06);
@@ -502,6 +505,7 @@
         b.addEventListener('pointerdown', function (e) {
           e.preventDefault(); if (over) return;
           if (+b.dataset.i === ink) { c++; beep(760, 0.05, 'square', 0.04); } else { w++; beep(150, 0.12, 'sawtooth', 0.06); buzz(50); }
+          api.part('stroop', { c: c, w: w });
           api.body.querySelector('#sc').textContent = '✔ ' + c; api.body.querySelector('#sx').textContent = '✖ ' + w;
           next();
         });
@@ -512,8 +516,8 @@
   };
 
   G.simon = {
-    name: 'احفظ الترتيب', emoji: '🧠', dur: 600, needs: '', color: '#00B5C7',
-    hint: 'الأزرار بتضوي بترتيب، عيدو متلو. كل مرة بيزيد واحد، وبتضل تلعب لحد أول غلطة.',
+    name: 'احفظ الترتيب', emoji: '🧠', dur: 60, needs: '', color: '#00B5C7',
+    hint: 'الأزرار بتضوي بترتيب، عيدو متلو. كل مرة بيزيد واحد. معك دقيقة، وأول غلطة بتوقّفك.',
     label: function (r) { return r.len ? 'حفظ ' + r.len + ' بالترتيب' : 'ما حفظ شي'; },
     score: function (r) { return r.len * 1000; },
     bot: function () { return { len: ri(3, 10) }; },
@@ -544,10 +548,10 @@
           var i = +p.dataset.i; flash(i, 160);
           if (i !== seq[inp]) { listening = false; sh.textContent = '❌ غلط!'; buzz(120); beep(120, 0.3, 'sawtooth', 0.08); setTimeout(end, 700); return; }
           inp++;
-          if (inp >= seq.length) { best = seq.length; sl.textContent = best; listening = false; sh.textContent = '✔ برافو'; setTimeout(play, 600); }
+          if (inp >= seq.length) { best = seq.length; api.part('simon', { len: best }); sl.textContent = best; listening = false; sh.textContent = '✔ برافو'; setTimeout(play, 600); }
         });
       });
-      api.timer(600, end, true);
+      api.timer(60, end);
       setTimeout(play, 400);
     }
   };
@@ -602,6 +606,7 @@
       }
       function submit() {
         var g = parseInt(val, 10) || 0, e = Math.abs(g - N); err += e;
+        api.part('dots', { err: err + (ROUNDS - round) * 15 });
         di.hidden = true; cv.hidden = true; rb.hidden = false;
         rb.innerHTML = '<div class="dt-rn">' + (e === 0 ? '🎯' : N) + '</div><div class="g-sub">' + (e === 0 ? 'بالضبط! كانوا ' + N : 'كانوا ' + N + '، وانت قلت ' + g) + '</div>' +
           (round < ROUNDS ? '<button class="btn" id="dnx">الجولة الجاية ▶</button>' : '<button class="btn" id="dnx">خلّصت ✔</button>');
@@ -636,7 +641,7 @@
           (function (isOdd, btn) {
             btn.addEventListener('pointerdown', function (e) {
               e.preventDefault(); if (over) return;
-              if (isOdd) { n++; beep(700 + n * 30, 0.06, 'square', 0.04); api.body.querySelector('#on').textContent = '🔍 ' + n; level(); }
+              if (isOdd) { n++; api.part('odd', { n: n }); beep(700 + n * 30, 0.06, 'square', 0.04); api.body.querySelector('#on').textContent = '🔍 ' + n; level(); }
               else { btn.classList.add('no'); buzz(40); beep(150, 0.08, 'sawtooth', 0.04); }
             });
           })(i === odd, b);
@@ -654,6 +659,7 @@
   function run(id, host, onDone, opts) {
     opts = opts || {};
     var g = G[id]; if (!g) return { begin: function () { }, info: function () { }, stop: function () { } };
+    var lastPart = null, partAt = 0, partT = 0;
     var live = true, timers = [], raf = 0, mic = null, tilt = null, finished = false, prepared = null, started = false, beginAt = 0, nowFn = null;
     host.innerHTML = '';
     var wrap = el('div', 'g-wrap');
@@ -673,6 +679,15 @@
       body: body,
       now: function () { return performance.now(); },
       mic: null, tilt: null,
+      part: function (id, r) {
+        if (finished || !opts.onPartial) return;
+        var sc = G[id].score(r), lb = G[id].label(r);
+        if (lastPart && lastPart[0] === sc) return;
+        lastPart = [sc, lb];
+        var t = performance.now();
+        if (t - partAt > 700) { partAt = t; opts.onPartial(sc, lb); }
+        else if (!partT) partT = setTimeout(function () { partT = 0; partAt = performance.now(); if (!finished && lastPart) opts.onPartial(lastPart[0], lastPart[1]); }, 750);
+      },
       finish: function (score, label) {
         if (finished) return; finished = true;
         cleanup();

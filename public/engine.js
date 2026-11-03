@@ -28,7 +28,7 @@
       players: {}, joinOrder: [], kicked: [],
       teams: [], used: [], passed: [], roundNo: 0,
       cur: null, history: [], reveal: null,
-      story: { group: true, podium: true },
+      story: { group: true, podium: true }, showBoard: false, teamsLocked: false,
       groupPhoto: false, seq: 0, updatedAt: now()
     };
   }
@@ -38,6 +38,7 @@
     this.s = opts.state ? clone(opts.state) : fresh(opts.code, opts.hostId);
     this.photos = opts.photos ? clone(opts.photos) : {};
     this.games = opts.games || {}; // {id:{dur}}
+    this.s.cfg.teamStyle = 'all';
     if (opts.now) nowFn = opts.now;
   }
 
@@ -215,7 +216,8 @@
   P.computeRound = function () {
     var s = this.s, c = s.cur, self = this;
     var playerRows = c.playersIn.map(function (id) {
-      var sc = c.scores[id];
+      var sc = c.scores[id], pt = c.partial && c.partial[id];
+      if (!sc && pt) return { id: id, score: pt.score, label: pt.label + ' ⏹️' };
       return { id: id, score: sc ? sc.score : null, label: sc ? sc.label : 'ما لعب' };
     });
     rankRows(playerRows);
@@ -356,6 +358,7 @@
       case 'joinTeam': {
         if (!p || s.cfg.mode !== 'teams') return;
         if (s.phase !== 'lobby' && s.phase !== 'setup') return;
+        if (s.teamsLocked && !host) return;
         if (!this.findTeam(a.team)) return;
         p.team = a.team;
         this.fixCaptains();
@@ -371,6 +374,22 @@
         if (this.allIn()) { this.finishPlay(); return; }
         this.emit();
         return;
+      }
+      case 'renameTeam': {
+        var tt = this.findTeam(a.team);
+        if (!tt || !(host || tt.captain === pid)) return;
+        var tn = String(a.name || '').trim().slice(0, 24);
+        if (tn) tt.name = tn;
+        this.emit();
+        return;
+      }
+      case 'partial': {
+        var cp = s.cur;
+        if (s.phase !== 'play' || !cp || !cp.startAt || cp.playersIn.indexOf(pid) < 0 || cp.scores[pid]) return;
+        var ps = Number(a.score); if (!isFinite(ps)) return;
+        cp.partial = cp.partial || {};
+        cp.partial[pid] = { score: Math.round(ps * 100) / 100, label: String(a.label || '').slice(0, 40) };
+        return; // ما في داعي نبعت الحالة للكل
       }
       case 'ready': {
         var cr = s.cur;
@@ -420,7 +439,7 @@
       case 'cfg': {
         if (s.phase !== 'setup' && s.phase !== 'lobby') return;
         var cfg = a.cfg || {};
-        ['mode', 'teamStyle', 'titles'].forEach(function (k) { if (typeof cfg[k] === 'string') s.cfg[k] = cfg[k]; });
+        ['mode', 'titles'].forEach(function (k) { if (typeof cfg[k] === 'string') s.cfg[k] = cfg[k]; });
         if (cfg.teamCount) s.cfg.teamCount = Math.max(2, Math.min(4, cfg.teamCount | 0));
         if (Array.isArray(cfg.games)) {
           var gs = cfg.games.filter(function (g) { return GAME_IDS.indexOf(g) >= 0; });
@@ -455,14 +474,8 @@
         this.emit();
         return;
       }
-      case 'renameTeam': {
-        var tt = this.findTeam(a.team);
-        if (!tt) return;
-        var tn = String(a.name || '').trim().slice(0, 24);
-        if (tn) tt.name = tn;
-        this.emit();
-        return;
-      }
+      case 'lockTeams': { s.teamsLocked = !!a.on; this.emit(); return; }
+      case 'showBoard': { s.showBoard = !!a.on; this.emit(); return; }
       case 'captain': {
         var tp2 = s.players[a.pid];
         if (!tp2 || !tp2.team) return;
@@ -631,6 +644,7 @@
         return;
       }
       case 'rematch': {
+        s.showBoard = false;
         s.history = []; s.used = []; s.passed = []; s.roundNo = 0; s.cur = null; s.reveal = null;
         s.teams.forEach(function (t) { t.ptr = 0; });
         s.phase = 'lobby';

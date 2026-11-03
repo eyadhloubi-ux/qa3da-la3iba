@@ -351,8 +351,7 @@
       (V.setupErr ? '<div class="err">' + esc(V.setupErr) + '</div>' : '') + '</div>' +
       '<div class="card"><span class="label">طريقة اللعب</span><div class="chips">' + chip('cfg', 'mode:solo', c.mode === 'solo', '🙋 كل واحد لحالو') + chip('cfg', 'mode:teams', c.mode === 'teams', '👥 فرق') + '</div>' +
       (c.mode === 'teams' ? '<span class="label">كم فريق؟</span><div class="chips">' + [2, 3, 4].map(function (n) { return chip('cfg', 'teamCount:' + n, c.teamCount === n, n + ' فرق'); }).join('') + '</div>' +
-        '<span class="label">مين بيلعب من الفريق؟</span><div class="chips">' + chip('cfg', 'teamStyle:all', c.teamStyle === 'all', '🫂 الفريق كله بكل جولة') + chip('cfg', 'teamStyle:rotate', c.teamStyle === 'rotate', '🔄 واحد من كل فريق بالدور') + '</div>' +
-        '<p class="muted" style="margin:0;font-size:14px">' + (c.teamStyle === 'all' ? 'كل الأعضاء بيلعبوا وبينحسب معدّل الفريق.' : 'كل جولة بيلعب عضو من كل فريق، وبيتبدّلوا بالدور.') + ' قائد كل فريق 👑 هو اللي بيراهن.</p>' : '') +
+        '<p class="muted" style="margin:0;font-size:14px">كل أعضاء الفريق بيلعبوا بكل جولة، وبينحسب معدّل الفريق. قائد كل فريق 👑 بيراهن وبيغيّر اسم فريقه.</p>' : '') +
       '</div>' +
       '<div class="card"><span class="label">الألعاب (' + c.games.length + ' من ' + liveGames().length + ')</span><div class="chips">' + gl + '</div>' +
       '<span class="label">كم جولة؟</span><div class="stepper"><button class="btn sm ghost" data-a="rounds" data-v="-1" aria-label="أقل">−</button><span class="val num">' + c.rounds + '</span><button class="btn sm ghost" data-a="rounds" data-v="1" aria-label="أكتر">+</button></div>' +
@@ -381,8 +380,8 @@
     if (S.cfg.mode === 'teams') {
       h += '<div class="teams">' + S.teams.map(function (t) {
         var mem = teamMembers(t.id), mine = P(ME) && P(ME).team === t.id;
-        return '<div class="team" style="--tc:' + t.color + '"><div class="team-h">' + (host ? '<button data-a="renameTeam" data-v="' + t.id + '">' + t.emoji + ' ' + esc(t.name) + ' ✏️</button>' : '<span>' + t.emoji + ' ' + esc(t.name) + '</span>') + '<span class="num">' + mem.length + '</span></div>' +
-          '<div class="team-b">' + mem.map(plTile).join('') + '</div>' + (mine ? '' : '<button class="btn sm ghost" data-a="joinTeam" data-v="' + t.id + '">انضم هون</button>') + '</div>';
+        return '<div class="team" style="--tc:' + t.color + '"><div class="team-h">' + (host || t.captain === ME ? '<button data-a="renameTeam" data-v="' + t.id + '">' + t.emoji + ' ' + esc(t.name) + ' ✏️</button>' : '<span>' + t.emoji + ' ' + esc(t.name) + '</span>') + '<span class="num">' + mem.length + '</span></div>' +
+          '<div class="team-b">' + mem.map(plTile).join('') + '</div>' + (mine || S.teamsLocked ? '' : '<button class="btn sm ghost" data-a="joinTeam" data-v="' + t.id + '">انضم هون</button>') + '</div>';
       }).join('') + '</div>';
       var un = ids.filter(function (id) { return !S.players[id].team; });
       if (un.length) h += '<span class="label">لسّا ما اختاروا فريق</span><div class="plist">' + un.map(plTile).join('') + '</div>';
@@ -390,10 +389,10 @@
       h += '<div class="plist">' + ids.map(plTile).join('') + '</div>';
     }
     h += '<p class="muted" style="margin:0;font-size:13px">' + (host ? 'اكبس على أي حدا لتعدّل اسمو أو تطلّعو' + (S.cfg.mode === 'teams' ? ' أو تخليه قائد 👑' : '') + '.' : 'اكبس على صورتك لتعدّل اسمك.') + '</p></div>';
-    var summary = (S.cfg.mode === 'solo' ? '🙋 فردي' : '👥 ' + S.teams.length + ' فرق · ' + (S.cfg.teamStyle === 'all' ? 'الفريق كله' : 'بالدور')) +  ' · 🎡 عجلة الحظ' + ' · ' + S.cfg.rounds + ' جولة';
+    var summary = (S.cfg.mode === 'solo' ? '🙋 فردي' : '👥 ' + S.teams.length + ' فرق' + (S.teamsLocked ? ' · 🔒 مقفولة' : '')) +  ' · 🎡 عجلة الحظ' + ' · ' + S.cfg.rounds + ' جولة';
     h += '<p class="center muted" style="margin:0;font-weight:800">' + summary + '</p>';
     if (host) {
-      h += '<div class="btn-row"><button class="btn ghost" data-a="backSetup">⚙️ الإعدادات</button>' + (S.cfg.mode === 'teams' ? '<button class="btn pink" data-a="shuffle">🎲 فرز عشوائي</button>' : '') + '</div>' +
+      h += '<div class="btn-row"><button class="btn ghost" data-a="backSetup">⚙️ الإعدادات</button>' + (S.cfg.mode === 'teams' ? '<button class="btn pink" data-a="shuffle">🎲 فرز عشوائي</button><button class="btn ' + (S.teamsLocked ? 'red' : 'ghost') + '" data-a="lockTeams">' + (S.teamsLocked ? '🔒 الفرق مقفولة' : '🔓 قفّل الفرق') + '</button>' : '') + '</div>' +
         '<button class="btn red wide" data-a="start" ' + (ids.length < 2 ? 'disabled' : '') + '>يلا نبلّش ▶</button>' +
         (ids.length < 2 ? '<p class="center muted" style="margin:0">لازم لاعبين اتنين عالأقل</p>' : '');
     } else h += '<div class="card center"><b class="dots-anim">بانتظار الريس يبلّش</b></div>';
@@ -571,6 +570,7 @@
     }, {
       seed: S.cur.seed,
       onReady: function () { act({ a: 'ready' }); },
+      onPartial: function (sc, lb) { act({ a: 'partial', score: sc, label: lb }); },
       onHostTool: function (a) { if (a === 'goNow') act({ a: 'goNow' }); }
     });
     var x = document.createElement('button');
@@ -585,6 +585,13 @@
       });
     };
     $stage.appendChild(x);
+    if (isHost()) {
+      var pb = document.createElement('button');
+      pb.className = 'icon-btn'; pb.textContent = '👥'; pb.setAttribute('aria-label', 'اللاعبين');
+      pb.style.cssText = 'position:fixed;bottom:calc(14px + env(safe-area-inset-bottom,0px));right:calc(14px + env(safe-area-inset-right,0px));z-index:45';
+      pb.onclick = function () { playersSheet(); };
+      $stage.appendChild(pb);
+    }
     syncGame();
   }
   function closeGame() {
@@ -612,7 +619,8 @@
     if (S.cfg.mode === 'teams') {
       h += '<details class="card"><summary class="label" style="cursor:pointer">نتائج اللاعبين</summary><div class="waitlist">' + rec.playerRows.map(function (r) { var p = P(r.id); if (!p) return ''; return '<div class="wrow">' + avatar(r.id, 'sm') + '<span class="nm">' + esc(p.name) + '</span><span class="muted" style="font-weight:800">' + esc(r.label) + '</span></div>'; }).join('') + '</div></details>';
     }
-    h += boardView(false);
+    if (S.showBoard) h += boardView(false);
+    if (isHost()) h += '<button class="btn sm ghost" data-a="showBoard">' + (S.showBoard ? '🙈 خبّي المجموع عن الكل' : '📊 اعرض المجموع للكل') + '</button>';
     if (isHost()) {
       if (S.roundNo >= S.cfg.rounds) h += '<button class="btn red wide" data-a="endNow">عالنتيجة النهائية 🏆</button><button class="btn ghost wide" data-a="more">+3 جولات كمان</button>';
       else h += '<button class="btn red wide" data-a="next">الجولة الجاية ▶</button>';
@@ -623,7 +631,7 @@
   function resRows(rec) {
     return '<div class="res-list">' + rec.rows.map(function (r) {
       var cls = r.pts > 0 ? '' : r.pts < 0 ? 'neg' : 'zero';
-      var sub = S.cfg.mode === 'teams' && r.players && S.cfg.teamStyle === 'rotate' ? (P(r.players[0]) ? P(r.players[0]).name + ' · ' : '') + r.label : r.label;
+      var sub = r.label;
       return '<div class="res ' + (r.rank === 1 ? 'first' : '') + '"><span class="stamp num">' + (r.rank || '–') + '</span>' + entAvatar(r.id) +
         '<div style="min-width:0"><div class="nm">' + esc(entName(r.id)) + '</div><div class="sub">' + esc(sub) + '</div></div><span class="tix num ' + cls + '">' + nb(r.pts, true) + ' 🎟️</span></div>';
     }).join('') + '</div>';
@@ -875,6 +883,8 @@
     backSetup: function () { act({ a: 'backToSetup' }); },
     shuffle: function () { act({ a: 'shuffleTeams' }); },
     joinTeam: function (v) { act({ a: 'joinTeam', team: v }); },
+    lockTeams: function () { act({ a: 'lockTeams', on: !S.teamsLocked }); },
+    showBoard: function () { act({ a: 'showBoard', on: !S.showBoard }); },
     renameTeam: function (v) { var t = teamById(v); inputSheet('اسم الفريق', t.name, function (val) { act({ a: 'renameTeam', team: v, name: val }); }); },
     player: function (v) { playerSheet(v); },
     players: function () { playersSheet(); },
@@ -889,7 +899,7 @@
     goNow: function () { act({ a: 'goNow' }); },
     spin: function () { act({ a: 'spin' }); },
     replayAsk: function () { confirmSheet('نعيد ' + GM[(S.cur || S.history[S.history.length - 1]).game].name + ' من أول؟ نتيجة هالجولة رح تنلغى.', 'عيدها 🔁', function () { act({ a: 'replay' }); }); },
-    closeAsk: function () { confirmSheet('بدك تسكّر الجولة هلّق؟ اللي ما خلّص ما رح تنحسبلو نقاط.', 'سكّر الجولة', function () { act({ a: 'closeRound' }); }); },
+    closeAsk: function () { confirmSheet('بدك تسكّر الجولة هلّق؟ اللي لسّا عم يلعب بتنحسبلو نتيجتو لهون.', 'سكّر الجولة', function () { act({ a: 'closeRound' }); }); },
     reveal: function () { act({ a: 'reveal' }); },
     hide: function () { act({ a: 'hide' }); },
     next: function () { act({ a: 'next' }); },
@@ -997,9 +1007,11 @@
       var p = P(id), t = S.cfg.mode === 'teams' && p.team ? teamById(p.team) : null;
       return '<button class="wrow wbtn" data-pid="' + id + '">' + avatar(id, 'sm') + '<span class="nm">' + esc(p.name) + (id === ME ? ' (أنا)' : '') + (t ? ' <span class="muted" style="font-size:13px">' + t.emoji + '</span>' : '') + '</span>' +
         '<span class="st-tag ' + (p.on ? 'on' : 'off') + '">' + (p.on ? 'موصول' : '📵 مو موصول') + '</span></button>';
-    }).join('') + '</div><p class="muted" style="margin:0;font-size:14px">اكبس على أي حدا لتعدّل اسمو أو تطلّعو من القعدة، حتى لو طلع لحالو.</p>';
+    }).join('') + '</div><p class="muted" style="margin:0;font-size:14px">اكبس على أي حدا لتعدّل اسمو أو تطلّعو من القعدة، حتى لو طلع لحالو أو علّق بنص اللعبة.</p>' +
+      (S.phase === 'play' ? '<button class="btn ghost" id="ps-close">⏹️ سكّر الجولة هلّق (اللي ما خلّص بتنحسبلو نتيجتو لهون)</button>' : '');
     openSheet(h, function (sh) {
       sh.querySelectorAll('[data-pid]').forEach(function (b) { b.onclick = function () { var id = b.dataset.pid; closeSheet(); playerSheet(id); }; });
+      var cl = sh.querySelector('#ps-close'); if (cl) cl.onclick = function () { closeSheet(); act({ a: 'closeRound' }); };
     });
   }
   function helpSheet() {
