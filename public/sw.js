@@ -1,6 +1,6 @@
 /* قعدة لعّيبة — كاش سريع: بيفتح من الكاش فوراً وبيحدّث بالخلفية */
-const C = 'la3iba-v9';
-const CORE = ['./', 'index.html', 'style.css', 'app.js', 'engine.js', 'games.js', 'story.js', 'art.js', 'qrcode.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
+const C = 'la3iba-v10';
+const CORE = ['./', 'index.html', 'style.css', 'app.js', 'engine.js', 'games.js', 'story.js', 'art.js', 'qrcode.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(CORE)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {
