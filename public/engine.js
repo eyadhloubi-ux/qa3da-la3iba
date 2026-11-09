@@ -613,7 +613,7 @@
         if (s.phase !== 'revealChoice') return;
         var st = Engine.standings(s, true).rows;
         if (a.mode === 'party') {
-          var steps = Math.min(3, st.length);
+          var steps = st.length; // من الأخير للأول
           s.reveal = { mode: 'party', steps: steps, step: 0, at: now() };
           s.phase = 'reveal';
         } else {

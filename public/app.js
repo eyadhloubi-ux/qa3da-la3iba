@@ -235,7 +235,7 @@
     var key = S.cfg.mode === 'solo' ? (fem(row.id) ? 'f' : 'm') : 't';
     return titleOf(row.rank, key) || phraseOf(row.id, key);
   }
-  function ordinal(n) { return ['', 'الأول', 'التاني', 'التالت', 'الرابع'][n] || ('رقم ' + n); }
+  function ordinal(n) { return ['', 'الأول', 'التاني', 'التالت', 'الرابع', 'الخامس', 'السادس', 'السابع', 'التامن', 'التاسع', 'العاشر'][n] || ('رقم ' + n); }
 
   /* ---------- العرض الرئيسي ---------- */
   function header() {
@@ -446,6 +446,9 @@
       (function frame() {
         var gg = document.getElementById('wrot'); if (!gg) return;
         var x = Math.max(0, Math.min(1, (T() - t0) / dur));
+        var ang = final * ease(x), segNow = Math.floor((ang + seg / 2) / seg);
+        if (x > 0 && x < 1 && segNow !== V.lastSeg) { V.lastSeg = segNow; MiniGames.sfx.tick(); }
+        if (x >= 1 && V.spinDing !== sp.id) { V.spinDing = sp.id; MiniGames.sfx.stop(); }
         gg.setAttribute('transform', 'rotate(' + (final * ease(x)).toFixed(2) + ' 160 160)');
         if (x < 1) requestAnimationFrame(frame);
         else if (!V.spinBuzz || V.spinBuzz !== sp.id) { V.spinBuzz = sp.id; try { navigator.vibrate && navigator.vibrate(60); } catch (e) { } }
@@ -456,6 +459,7 @@
         var x = (T() - t0) / dur;
         if (x >= 1) { var gg = GM[sp.list[sp.target]]; el.textContent = gg.emoji + ' ' + gg.name; el.style.background = gg.color; el.style.color = 'var(--onc)'; return; }
         var i = Math.floor(Math.max(0, T() - t0) / (60 + Math.max(0, x) * 200)) % n;
+        if (i !== V.lastSeg) { V.lastSeg = i; MiniGames.sfx.tick(); }
         el.textContent = GM[sp.list[i]].emoji + ' ' + GM[sp.list[i]].name;
         setTimeout(tick, 50);
       })();
@@ -654,18 +658,22 @@
   }
   function revealView() {
     var st = ENG.standings(S, true).rows, r = S.reveal, h = '<div class="reveal-stage">';
-    if (V.revealSeen !== r.at) { V.revealSeen = r.at; V.revealAt = performance.now(); if (r.step > 0) setTimeout(render, 2150); }
-    var counting = r.step > 0 && performance.now() - V.revealAt < 2100;
+    var placeNow = r.step > 0 ? r.steps - r.step + 1 : 0, CD = placeNow && placeNow <= 3 ? 2100 : 1050;
+    if (V.revealSeen !== r.at) {
+      V.revealSeen = r.at; V.revealAt = performance.now();
+      if (r.step > 0) { setTimeout(render, CD + 50); MiniGames.sfx.drum(CD - 100); setTimeout(function () { if (placeNow === 1) MiniGames.sfx.fanfare(); else if (placeNow <= 3) MiniGames.sfx.ding(); else MiniGames.sfx.soft(); }, CD); }
+    }
+    var counting = r.step > 0 && performance.now() - V.revealAt < CD;
     if (r.step === 0) {
-      h += '<div style="font-size:80px">🥁</div><h2>جاهزين للكشف؟</h2><p class="muted">' + (S.cfg.mode === 'solo' ? 'مين معلّم اللعب بالقعدة؟' : 'أي فريق هو الفريق اللعّيب؟') + '</p>';
+      h += '<div style="font-size:80px">🥁</div><h2>جاهزين للكشف؟</h2><p class="muted" style="margin:0">من الأخير للأول 👇</p><p class="muted">' + (S.cfg.mode === 'solo' ? 'مين معلّم اللعب بالقعدة؟' : 'أي فريق هو الفريق اللعّيب؟') + '</p>';
     } else {
       var place = r.steps - r.step + 1, row = st[place - 1];
       if (counting) {
-        var n = 3 - Math.floor((performance.now() - V.revealAt) / 700);
+        var stepMs = CD / 3, n = 3 - Math.floor((performance.now() - V.revealAt) / stepMs);
         h += '<span class="place">المركز ' + ordinal(place) + '</span><div class="reveal-count num">' + Math.max(1, n) + '</div>';
-        setTimeout(render, 700 - ((performance.now() - V.revealAt) % 700));
+        setTimeout(render, stepMs - ((performance.now() - V.revealAt) % stepMs));
       } else if (row) {
-        h += '<span class="place">المركز ' + ordinal(place) + '</span>' + podiumCard(row, place === 1);
+        h += '<span class="place">المركز ' + ordinal(row.rank) + (row.rank !== place ? ' (تعادل)' : '') + '</span>' + podiumCard(row, row.rank === 1);
         if (place === 1 && V.confettiFor !== 'rev' + r.at) { V.confettiFor = 'rev' + r.at; confetti(); }
       }
     }
@@ -821,6 +829,7 @@
   }
 
   /* ---------- الأحداث ---------- */
+  document.addEventListener('pointerdown', function () { MiniGames.sfx.unlock(); }, { capture: true, passive: true });
   $app.addEventListener('click', function (e) {
     var b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
     var a = b.dataset.a, v = b.dataset.v;

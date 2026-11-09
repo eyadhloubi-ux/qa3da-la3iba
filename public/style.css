@@ -486,3 +486,7 @@ body, #stage, :root[data-skin] body, :root[data-skin] #stage { background-image:
 .dw-bad .dw-msg { color: #B3261E; }
 
 .crop-box.rect.tall { aspect-ratio: 3/4; width: min(64vw, 270px); }
+
+.mic-test .btn-row { justify-content: center; width: 100%; }
+.mic-test .btn-row > .btn { flex: 0 1 auto; }
+#go[hidden] { display: none; }

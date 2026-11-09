@@ -26,58 +26,85 @@
   }
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 30); } catch (e) { } }
 
-  /* ---------- المايك ---------- */
+  /* ---------- المايك: 3 طرق لكشف النفخ، وبنختار اللي بتشتغل عالموبايل ---------- */
+  // low: طاقة الترددات الواطية (هوا النفخ) · loud: علو الصوت العام · wide: ضجة الهوا العالية (1-6 كيلوهرتز)
+  var MODES = ['low', 'loud', 'wide'];
+  var MODE_NAMES = { low: 'الطريقة 1', loud: 'الطريقة 2', wide: 'الطريقة 3' };
+  function lsGet(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+  function openStream() {
+    var tries = [
+      { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } },
+      { audio: true }
+    ];
+    return new Promise(function (resolve) {
+      var i = 0;
+      (function next() {
+        if (i >= tries.length) return resolve(null);
+        var c = tries[i++];
+        try { navigator.mediaDevices.getUserMedia(c).then(resolve).catch(function (err) { if (err && err.name === 'NotAllowedError') return resolve(null); next(); }); }
+        catch (e) { next(); }
+      })();
+    });
+  }
   function getMic() {
     return new Promise(function (resolve) {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return resolve(null);
         var done = false;
-        var to = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 6000);
-        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (stream) {
-          if (done) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        var to = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 8000);
+        var ac = audio();
+        openStream().then(function (stream) {
+          if (done) { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); return; }
           done = true; clearTimeout(to);
-          var ac = audio();
+          if (!stream) return resolve(null);
+          ac = audio();
           if (!ac) { stream.getTracks().forEach(function (t) { t.stop(); }); return resolve(null); }
+          try { if (ac.state !== 'running') ac.resume(); } catch (e) { }
           var src = ac.createMediaStreamSource(stream);
-          var an = ac.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.35;
-          an.minDecibels = -95; an.maxDecibels = -20;
+          var an = ac.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.3;
+          an.minDecibels = -100; an.maxDecibels = -15;
           src.connect(an);
-          var fb = new Uint8Array(an.frequencyBinCount);
-          var hi = Math.max(4, Math.round(1400 / (ac.sampleRate / an.fftSize)));
-          var cal = loadCal();
+          // بعض الموبايلات (آيفون) ما بتشغّل المحلّل إلا إذا كان موصول لمخرج: نوصله بصوت صفر
+          try { var mute = ac.createGain(); mute.gain.value = 0; an.connect(mute); mute.connect(ac.destination); } catch (e) { }
+          var fb = new Uint8Array(an.frequencyBinCount), tb = new Uint8Array(an.fftSize);
+          var hz = ac.sampleRate / an.fftSize;
+          var lo1 = 1, lo2 = Math.max(4, Math.round(1400 / hz)), w1 = Math.round(1000 / hz), w2 = Math.min(fb.length - 1, Math.round(6000 / hz));
+          var saved = lsGet('lb_mic2', {});
+          var cal = {}; MODES.forEach(function (k) { var c = saved[k] || {}; cal[k] = { base: typeof c.base === 'number' ? c.base : 0.15, peak: (c.peak || 0) * 0.85 }; });
           var m = {
-            cal: cal,
-            // طاقة الترددات الواطية (صوت الهوا بالنفخ) بين 0 و1
-            level: function () {
-              an.getByteFrequencyData(fb);
-              var sum = 0; for (var i = 1; i <= hi; i++) sum += fb[i];
-              return sum / hi / 255;
+            mode: MODES.indexOf(lsGet('lb_micmode', '')) >= 0 ? lsGet('lb_micmode', '') : 'low',
+            auto: !lsGet('lb_micmode', ''),
+            levels: function () {
+              an.getByteFrequencyData(fb); an.getByteTimeDomainData(tb);
+              var a = 0, i; for (i = lo1; i <= lo2; i++) a += fb[i];
+              var w = 0; for (i = w1; i <= w2; i++) w += fb[i];
+              var r = 0; for (i = 0; i < tb.length; i++) { var v = (tb[i] - 128) / 128; r += v * v; }
+              r = Math.sqrt(r / tb.length);
+              var db = r > 0 ? Math.max(0, Math.min(1, (20 * Math.log10(r) + 70) / 70)) : 0;
+              return { low: a / (lo2 - lo1 + 1) / 255, wide: w / (w2 - w1 + 1) / 255, loud: db };
             },
-            // 0 = ما في نفخ، 1 = نفخ قوي
-            blow: function () {
-              var lv = m.level();
-              if (lv < m.cal.base) m.cal.base = m.cal.base * 0.9 + lv * 0.1; else m.cal.base += (lv - m.cal.base) * 0.002;
-              var top = Math.max(m.cal.peak, m.cal.base + 0.12);
-              var thr = m.cal.base + Math.max(0.05, (top - m.cal.base) * 0.28);
-              if (lv > m.cal.peak) m.cal.peak = lv;
-              return lv <= thr ? 0 : Math.min(1.4, (lv - thr) / Math.max(0.05, top - thr));
+            strength: function (k, lv) {
+              var c = cal[k];
+              if (lv < c.base) c.base = c.base * 0.9 + lv * 0.1; else c.base += (lv - c.base) * 0.002;
+              if (lv > c.peak) c.peak = lv;
+              var top = Math.max(c.peak, c.base + 0.1);
+              var thr = c.base + Math.max(0.04, (top - c.base) * 0.28);
+              return lv <= thr ? 0 : Math.min(1.4, (lv - thr) / Math.max(0.04, top - thr));
             },
-            heard: false,
-            stop: function () { saveCal(m.cal); try { stream.getTracks().forEach(function (t) { t.stop(); }); src.disconnect(); } catch (e) { } }
+            all: function () { var L = m.levels(), out = {}; MODES.forEach(function (k) { out[k] = m.strength(k, L[k]); }); return out; },
+            blow: function () { return m.all()[m.mode]; },
+            setMode: function (k) { m.mode = k; m.auto = false; lsSet('lb_micmode', k); },
+            stop: function () {
+              var o = {}; MODES.forEach(function (k) { o[k] = { base: cal[k].base, peak: cal[k].peak }; }); lsSet('lb_mic2', o);
+              try { stream.getTracks().forEach(function (t) { t.stop(); }); src.disconnect(); } catch (e) { }
+            }
           };
           resolve(m);
-        }).catch(function () { if (!done) { done = true; clearTimeout(to); resolve(null); } });
+        });
       } catch (e) { resolve(null); }
     });
   }
-
-  function loadCal() {
-    var c = null; try { c = JSON.parse(localStorage.getItem('lb_mic') || 'null'); } catch (e) { }
-    if (!c || typeof c.base !== 'number') c = { base: 0.2, peak: 0 };
-    c.peak = Math.max(0, Math.min(c.peak || 0, 0.95)) * 0.85; // نخفّف الذروة القديمة شوي
-    return c;
-  }
-  function saveCal(c) { try { localStorage.setItem('lb_mic', JSON.stringify({ base: c.base, peak: c.peak })); } catch (e) { } }
 
   /* ---------- حساس الميلان ---------- */
   function getTilt() {
@@ -740,7 +767,7 @@
     }
 
     body.innerHTML = '<div class="g-center g-ready"><div class="g-ready-e">' + g.emoji + '</div><div class="g-hint">' + g.hint + '</div>' +
-      (g.needs === 'mic' ? '<div class="g-note">🎤 رح نطلب إذن المايك</div>' : g.needs === 'tilt' ? '<div class="g-note">📱 رح نطلب إذن حساس الحركة</div>' : '') +
+      (g.needs === 'mic' ? '<div class="g-note">🎤 قبل ما نبلّش منجرّب المايك سوا</div>' : g.needs === 'tilt' ? '<div class="g-note">📱 رح نطلب إذن حساس الحركة</div>' : '') +
       '<button class="btn btn-go" id="go">جاهز ✋</button><div id="gmic"></div><div class="g-wait" id="gw"></div><div id="gh"></div></div>';
     var info = '', toolsHtml = '';
     function paintWait() {
@@ -752,26 +779,60 @@
       var t = e.target.closest('[data-gt]');
       if (t && opts.onHostTool) opts.onHostTool(t.dataset.gt);
     });
-    body.querySelector('#go').addEventListener('click', function () {
+    var goBtn = body.querySelector('#go');
+    if (g.needs === 'mic') goBtn.textContent = '🎤 جرّب المايك';
+    function markReady() {
+      if (!live || started) return;
+      goBtn.hidden = false; goBtn.disabled = true; goBtn.textContent = 'جاهز ✔'; goBtn.classList.add('is-ready');
+      if (opts.onReady) opts.onReady();
+    }
+    goBtn.addEventListener('click', function () {
       var b = this; b.disabled = true; b.textContent = 'لحظة...';
       prep().then(function () {
         if (!live || started) return;
-        b.textContent = 'جاهز ✔';
-        b.classList.add('is-ready');
-        if (opts.onReady) opts.onReady();
-        if (g.needs === 'mic') micTest();
+        if (g.needs === 'mic') { b.hidden = true; micTest(); return; }
+        markReady();
       });
     });
 
+    // معاينة النفخ: 3 طرق كشف، بنختار لحالنا اللي بتتحرك أكتر، أو بيبدّل اللاعب، أو بيلعب باللمس
     function micTest() {
       var box = body.querySelector('#gmic'); if (!box) return;
-      if (!mic) { box.innerHTML = '<div class="g-note">🎤 ما قدرنا نوصل للمايك، رح تلعب باللمس</div>'; return; }
-      box.innerHTML = '<div class="mic-test"><b id="mtt">جرّب انفخ هلّق لنتأكد إنو عم نسمعك 💨</b>' + micMeter() + '</div>';
-      var ok = false;
+      if (!mic) {
+        box.innerHTML = '<div class="mic-test"><b>🎤 ما قدرنا نوصل للمايك</b><span class="g-note">رح تلعب باللمس. إذا بدك المايك، اسمح للمتصفح فيه وارجع افتح اللعبة.</span><button class="btn" id="mt-ok">تمام، جاهز ✋</button></div>';
+        box.querySelector('#mt-ok').onclick = function () { box.innerHTML = '<div class="g-note">👆 رح تلعب باللمس</div>'; markReady(); };
+        return;
+      }
+      box.innerHTML = '<div class="mic-test"><b id="mtt">انفخ عالمايك هلّق 💨</b>' + micMeter() +
+        '<span class="g-note" id="mtm"></span>' +
+        '<div class="btn-row"><button class="btn mint" id="mt-ok" disabled>✔ اشتغل، جاهز</button></div>' +
+        '<div class="btn-row"><button class="btn sm ghost" id="mt-next">🔁 جرّب طريقة تانية</button><button class="btn sm ghost" id="mt-touch">👆 العب باللمس</button></div></div>';
+      var t0 = performance.now(), heardAt = 0, best = {}, okB = box.querySelector('#mt-ok');
+      MODES.forEach(function (k) { best[k] = 0; });
+      function label() { var m = box.querySelector('#mtm'); if (m) m.textContent = MODE_NAMES[mic.mode] + ' من 3' + (mic.auto ? ' (تلقائي)' : ''); }
+      label();
+      box.querySelector('#mt-next').onclick = function () { var i = MODES.indexOf(mic.mode); mic.setMode(MODES[(i + 1) % MODES.length]); heardAt = 0; t0 = performance.now(); okB.disabled = true; box.querySelector('#mtt').textContent = 'انفخ عالمايك هلّق 💨'; label(); };
+      box.querySelector('#mt-touch').onclick = function () { try { mic.stop(); } catch (e) { } mic = null; api.mic = null; box.innerHTML = '<div class="g-note">👆 رح تلعب باللمس</div>'; markReady(); };
+      okB.onclick = function () { okB.disabled = true; okB.textContent = 'جاهز ✔'; markReady(); };
       (function f() {
-        if (!live || started) return;
-        var bw = mic.blow(); paintMeter(box, bw);
-        if (bw > 0.25 && !ok) { ok = true; var t = box.querySelector('#mtt'); if (t) t.textContent = '✔ عم نسمعك، تمام!'; buzz(20); }
+        if (!live || started || !mic) return;
+        var all = mic.all(), k;
+        // اختيار تلقائي: الطريقة اللي بتعطي أقوى إشارة وقت النفخ
+        if (mic.auto) {
+          for (k in all) best[k] = Math.max(best[k] * 0.995, all[k]);
+          var top = mic.mode; for (k in best) if (best[k] > best[top] + 0.25) top = k;
+          if (top !== mic.mode) { mic.mode = top; label(); }
+        }
+        var bw = all[mic.mode]; paintMeter(box, bw);
+        var tt = box.querySelector('#mtt');
+        if (bw > 0.3) {
+          if (!heardAt) heardAt = performance.now();
+          if (performance.now() - heardAt > 350 && okB.disabled && okB.textContent.indexOf('جاهز ✔') < 0) {
+            okB.disabled = false; if (tt) tt.textContent = '✔ عم نسمعك، تمام!'; buzz(20); beep(880, 0.1, 'triangle', 0.05);
+            if (mic.auto) { try { localStorage.setItem('lb_micmode', JSON.stringify(mic.mode)); } catch (e) { } }
+          }
+        } else heardAt = 0;
+        if (okB.disabled && okB.textContent.indexOf('جاهز ✔') < 0 && performance.now() - t0 > 6000 && tt) tt.textContent = 'ما عم نسمعك منيح؟ قرّب الموبايل من تمّك، أو جرّب طريقة تانية';
         requestAnimationFrame(f);
       })();
     }
@@ -810,5 +871,29 @@
     return { score: g.score(r), label: g.label(r) };
   }
 
-  root.MiniGames = { G: G, run: run, bot: botResult, ids: Object.keys(G), genMaze: genMaze };
+  /* ---------- أصوات الواجهة (العجلة والكشف) ---------- */
+  function noise(d, vol, f) {
+    var ac = AC; if (!ac) return;
+    try {
+      var n = Math.floor(ac.sampleRate * d), buf = ac.createBuffer(1, n, ac.sampleRate), ch = buf.getChannelData(0);
+      for (var i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      var src = ac.createBufferSource(), g = ac.createGain(), bp = ac.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = f || 1800; g.gain.value = vol || 0.08;
+      src.buffer = buf; src.connect(bp); bp.connect(g); g.connect(ac.destination); src.start();
+    } catch (e) { }
+  }
+  var sfx = {
+    unlock: function () { audio(); },
+    tick: function () { noise(0.03, 0.12, 2600); beep(1500, 0.025, 'square', 0.02); },
+    stop: function () { beep(660, 0.12, 'triangle', 0.07); setTimeout(function () { beep(990, 0.22, 'triangle', 0.07); }, 120); },
+    drum: function (ms) {
+      if (!AC) return; var n = Math.floor((ms || 1500) / 60);
+      for (var i = 0; i < n; i++) (function (k) { setTimeout(function () { noise(0.05, 0.05 + 0.08 * k / n, 180 + k * 4); }, k * 60); })(i);
+    },
+    ding: function () { beep(880, 0.15, 'triangle', 0.07); setTimeout(function () { beep(1320, 0.25, 'triangle', 0.06); }, 110); },
+    fanfare: function () { [523, 659, 784, 1047].forEach(function (f, i) { setTimeout(function () { beep(f, i === 3 ? 0.5 : 0.14, 'square', 0.05); }, i * 130); }); },
+    soft: function () { beep(392, 0.18, 'sine', 0.06); }
+  };
+
+  root.MiniGames = { G: G, run: run, bot: botResult, ids: Object.keys(G), genMaze: genMaze, sfx: sfx };
 })(this);
